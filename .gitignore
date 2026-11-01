@@ -1,0 +1,18 @@
+# Built or downloaded on the target machine; never commit
+llama.cpp/
+build/
+models/
+*.gguf
+*.safetensors
+*.bin
+
+# Runtime state
+logs/
+slots/
+run/
+
+# Python / OS
+__pycache__/
+*.pyc
+.venv/
+.DS_Store

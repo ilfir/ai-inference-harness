@@ -1,0 +1,35 @@
+{
+  "name": "qwen_flash_next",
+  "engine": "openai",
+  "display_name": "Qwen3.8-Flash-Next (Studio)",
+  "description": "Qwen3.8-Flash-Next IQ3_XXS + MTP on llama-server at 192.168.1.49:8080",
+  "base_url": "http://192.168.1.49:8080/v1",
+  "models": [
+    {
+      "name": "qwen3.8-flash-next",
+      "context_limit": 131072,
+      "input_token_cost": null,
+      "output_token_cost": null,
+      "currency": null,
+      "supports_cache_control": null,
+      "reasoning": true
+    }
+  ],
+  "headers": null,
+  "session_id_header_override": null,
+  "timeout_seconds": 600,
+  "supports_streaming": true,
+  "requires_auth": false,
+  "catalog_provider_id": null,
+  "base_path": null,
+  "env_vars": null,
+  "auth": null,
+  "dynamic_models": null,
+  "skip_canonical_filtering": false,
+  "model_doc_link": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next",
+  "setup_steps": [],
+  "toolshim": false,
+  "preserves_thinking": true,
+  "emit_clear_thinking": false,
+  "setup": null
+}
