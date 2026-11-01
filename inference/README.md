@@ -27,6 +27,7 @@ This folder holds the backend: `llama-server` from llama.cpp, built with Metal a
 | `-ngl 99 -fit off` | Every layer goes on Metal. Auto-fit mis-sizes `qwen4exp`. |
 | `-md <mtp.gguf> --spec-type draft-mtp --spec-draft-n-max 1 -ngld 99` | MTP speculative decoding. It needs a self-contained head, because mainline can't borrow tensors. n-max 1 measured best on the M1 Ultra. |
 | `-fa on -ctk q8_0 -ctv q8_0` | Flash attention, plus a KV cache at half the size. |
+| `--cache-ram $CACHE_RAM_MB` (2048) | Caps llama-server's host-RAM prompt cache. The 8 GiB default stacked on 53.6 GB of wired weights pushed the Studio into compression and swap during long Goose sessions. |
 | `--slot-save-path` (prefix caching is on by default) | Agent clients that resend the same long tool schemas only prefill the new tokens. `--cache-reuse` is not used: llama.cpp disables it for models with recurrent (DeltaNet) state. |
 
 **Why the shard layout matters:** Metal wires every shard that contains a GPU tensor. If the n-gram table shared a shard with the weights, it would be wired too, and the first decode would fail with a Metal OOM. `harness preflight` checks this.

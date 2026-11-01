@@ -248,4 +248,5 @@ Details are in [`client/goose/README.md`](client/goose/README.md).
 | Preflight reports `free memory` ❌ | Stop other model servers (Ollama, LM Studio, Unsloth, MLX), or use `--force` if you know the numbers. |
 | The server dies on its first reply with a Metal `OutOfMemory` error | Use the `chat` or `chat-nomtp` profile, and check that the n-gram table is in its own shard (preflight shows this). |
 | Slow first response in every Goose turn | The tool must send identical prompt prefixes for the cache to hit. Clients that rewrite earlier messages force a full re-read. |
+| Swap grows during long agent sessions | Lower `CACHE_RAM_MB` in the profile (default 2048 MiB), which caps llama-server's host-RAM prompt cache. |
 | GitHub is slow from the inference Mac | Copy a llama.cpp checkout of the pinned commit into `~/ai-harness/llama.cpp`; `build.sh` skips the fetch when it finds that commit. |

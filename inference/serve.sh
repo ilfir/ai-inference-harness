@@ -25,6 +25,7 @@ ARGS=(
   -c "$CTX" --parallel "$PARALLEL" -kvu   # unified KV: any slot may use the full context
   -fa on -ctk "$CACHE_TYPE" -ctv "$CACHE_TYPE"
   -t "$THREADS" -tb "$THREADS"
+  --cache-ram "${CACHE_RAM_MB:-2048}"  # host-RAM prompt cache; llama.cpp default 8 GiB pushes a 64 GB Mac into swap
   --slot-save-path "$AIH_HOME/slots"   # prefix caching is on by default; --cache-reuse is unsupported with DeltaNet state
   --jinja --metrics
   --host "$HOST" --port "$PORT"
