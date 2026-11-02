@@ -28,6 +28,7 @@ Why and how, in full: [DESIGN.md](DESIGN.md), which includes benchmarks in Appen
 | [`inference/`](inference/) | **Backend.** Build script for llama.cpp at a pinned commit, model download script, `serve.sh` launcher, serving profiles |
 | [`harness/`](harness/) | **Supervisor CLI** (Python stdlib only). Preflight checks, start/stop/status, logs, watchdog, chat, benchmarks, remote control over SSH |
 | [`client/`](client/) | **Connecting over the OpenAI protocol.** curl and Python SDK examples, Goose provider config |
+| [`harness-ui/`](harness-ui/) | **Mac app** (AI Harness.app, built from source): dashboard, settings, chat with web access and thinking effort, benchmarks, logs. See [harness-ui/README.md](harness-ui/README.md) |
 
 Nothing built or downloaded is committed (see [.gitignore](.gitignore)). llama.cpp is fetched at the commit in [`inference/LLAMA_CPP_COMMIT`](inference/LLAMA_CPP_COMMIT), and models are downloaded to `~/models/`.
 
@@ -209,7 +210,7 @@ A streaming example that also shows thinking mode is in [`client/examples/openai
 
 ### Thinking vs non-thinking
 
-Qwen3.8 **thinks by default**. The reasoning arrives in `reasoning_content`, separate from `content`. To turn it off, send `"chat_template_kwargs": {"enable_thinking": false}`.
+Qwen3.8 **thinks by default**. The reasoning arrives in `reasoning_content`, separate from `content`. To turn it off, send `"chat_template_kwargs": {"enable_thinking": false}`. To think less, send `"chat_template_kwargs": {"reasoning_effort": "low"}` (or `"medium"`; the default is `"xhigh"`). A server-wide default can be set per profile with `REASONING_EFFORT` (and a hard cap with `REASONING_BUDGET`).
 
 Recommended sampling, from the model card:
 

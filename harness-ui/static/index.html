@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Harness</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="dot" id="hdr-dot"></span>
+      <strong>AI Harness</strong>
+      <span class="muted" id="hdr-model">—</span>
+    </div>
+    <nav id="tabs">
+      <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="settings">Settings</button>
+      <button data-tab="chat">Chat</button>
+      <button data-tab="bench">Benchmark</button>
+      <button data-tab="logs">Logs</button>
+    </nav>
+    <div class="conn muted" id="hdr-conn" title="Inference host">—</div>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <main>
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="tab active">
+      <div class="controls card">
+        <label>Profile <select id="ctl-profile"></select></label>
+        <button id="btn-start" class="primary">Start</button>
+        <button id="btn-restart">Restart</button>
+        <button id="btn-stop" class="danger">Stop</button>
+        <button id="btn-preflight">Run preflight</button>
+        <label class="check"><input type="checkbox" id="ctl-force"> Skip preflight</label>
+        <span class="spacer"></span>
+        <span class="muted small" id="ctl-msg"></span>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h3>Backend</h3>
+          <div class="big" id="d-state">—</div>
+          <dl id="d-backend"></dl>
+        </div>
+        <div class="card">
+          <h3>Performance <span class="muted small">since start</span></h3>
+          <div class="metrics">
+            <div><div class="big" id="d-tps">—</div><div class="muted small">decode tok/s (avg)</div></div>
+            <div><div class="big" id="d-acc">—</div><div class="muted small">MTP acceptance</div></div>
+          </div>
+          <dl id="d-perf"></dl>
+        </div>
+        <div class="card">
+          <h3>Memory</h3>
+          <div class="bar"><div id="d-mem-wired" class="seg wired"></div><div id="d-mem-active" class="seg active"></div><div id="d-mem-comp" class="seg comp"></div></div>
+          <div class="legend small"><span class="sw wired"></span>wired (GPU) <span class="sw active"></span>active <span class="sw comp"></span>compressed <span class="sw free"></span>available</div>
+          <dl id="d-mem"></dl>
+        </div>
+        <div class="card">
+          <h3>Watchdog</h3>
+          <div class="big" id="d-wd">—</div>
+          <p class="muted small">A LaunchAgent on the host that restarts the backend after crashes or reboots and falls back to a smaller profile after an out-of-memory crash.</p>
+          <button id="btn-wd-install">Install</button>
+          <button id="btn-wd-remove">Remove</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="preflight-card">
+        <h3>Preflight</h3>
+        <table id="preflight-table"></table>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab">
+      <div class="card">
+        <div class="row">
+          <label>Profile <select id="set-profile"></select></label>
+          <span class="muted small" id="set-desc"></span>
+        </div>
+        <p class="muted small">Changes are saved on the inference host as per-machine overrides
+          (<code>inference/profiles/&lt;profile&gt;.local.env</code>, not committed). Restart the backend to apply them.</p>
+        <form id="set-form"></form>
+        <div class="row">
+          <button id="set-save" class="primary">Save</button>
+          <button id="set-reset" class="danger">Reset profile to defaults</button>
+          <span class="muted small" id="set-msg"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Connection</h3>
+        <p class="muted small">Where the backend runs. Leave the host empty when this app runs on the inference machine itself.</p>
+        <div class="form">
+          <label>SSH host <input id="cfg-host" placeholder="user@192.168.1.49"></label>
+          <label>Harness home on host <input id="cfg-home" placeholder="~/ai-harness"></label>
+        </div>
+        <div class="row"><button id="cfg-save">Save connection</button><span class="muted small" id="cfg-msg"></span></div>
+      </div>
+    </section>
+
+    <!-- CHAT -->
+    <section id="tab-chat" class="tab">
+      <div class="chat-layout">
+        <div class="card chat-main">
+          <div id="chat-log" class="chat-log"></div>
+          <div class="chat-input">
+            <textarea id="chat-text" rows="3" placeholder="Message… (Enter to send, Shift+Enter for a new line)"></textarea>
+            <div class="col">
+              <button id="chat-send" class="primary">Send</button>
+              <button id="chat-stopgen" class="hidden">Stop</button>
+              <button id="chat-clear">Clear</button>
+            </div>
+          </div>
+        </div>
+        <div class="card chat-side">
+          <h3>Parameters</h3>
+          <label>Thinking <select id="p-effort">
+            <option value="xhigh">High (model default)</option><option value="medium">Medium</option>
+            <option value="low">Low</option><option value="off">Off</option>
+          </select></label>
+          <p class="muted small">Qwen3.8 reasoning effort. Turning thinking on or off loads the model card's recommended sampling.</p>
+          <label class="check"><input type="checkbox" id="p-web"> Web access</label>
+          <p class="muted small">Lets the model search the web and read pages. Searches run from this Mac.</p>
+          <div class="param"><label>Temperature <output id="o-temp"></output></label><input type="range" id="p-temp" min="0" max="2" step="0.05"></div>
+          <div class="param"><label>Top-p <output id="o-topp"></output></label><input type="range" id="p-topp" min="0.05" max="1" step="0.05"></div>
+          <div class="param"><label>Top-k <output id="o-topk"></output></label><input type="range" id="p-topk" min="1" max="100" step="1"></div>
+          <div class="param"><label>Presence penalty <output id="o-pres"></output></label><input type="range" id="p-pres" min="0" max="2" step="0.1"></div>
+          <div class="param"><label>Max tokens <output id="o-max"></output></label><input type="range" id="p-max" min="64" max="8192" step="64"></div>
+          <label class="block">System prompt<textarea id="p-system" rows="4" placeholder="Optional"></textarea></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- BENCHMARK -->
+    <section id="tab-bench" class="tab">
+      <div class="card">
+        <div class="form inline">
+          <label>Runs <input type="number" id="b-runs" value="3" min="1" max="3"></label>
+          <label>Max tokens <input type="number" id="b-max" value="256" min="16" max="4096"></label>
+          <label>Context fill (≈tokens) <select id="b-fill">
+            <option value="0">none (short prompt)</option><option value="6000">~8k</option>
+            <option value="22000">~32k</option><option value="45000">~64k</option><option value="88000">~125k</option>
+          </select></label>
+          <label>Temperature <input type="number" id="b-temp" placeholder="model default" step="0.1" min="0" max="2"></label>
+          <button id="b-run" class="primary">Run benchmark</button>
+          <span class="muted small" id="b-msg"></span>
+        </div>
+        <p class="muted small">Uses the running backend. Long fills take minutes (prefill ≈350 tok/s). A random prefix defeats the prompt cache.</p>
+      </div>
+      <div class="card"><table id="b-table"><thead><tr><th>When</th><th>Profile</th><th>Fill</th><th>Prompt tok</th><th>Prefill tok/s</th><th>TTFT s</th><th>Gen tok</th><th>Decode tok/s</th><th>MTP accept</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <!-- LOGS -->
+    <section id="tab-logs" class="tab">
+      <div class="card">
+        <div class="row">
+          <label>Log <select id="l-which"><option value="0">Backend</option><option value="1">Watchdog</option></select></label>
+          <label>Lines <select id="l-lines"><option>100</option><option selected>300</option><option>1000</option></select></label>
+          <label class="check"><input type="checkbox" id="l-auto" checked> Auto-refresh</label>
+          <label>Filter <input id="l-filter" placeholder="e.g. eval time"></label>
+          <button id="l-refresh">Refresh</button>
+          <span class="muted small" id="l-path"></span>
+        </div>
+        <pre id="l-text" class="log"></pre>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>

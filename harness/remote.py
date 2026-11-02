@@ -19,7 +19,9 @@ def http_host(host):
 
 def sync(host, remote_home):
     subprocess.run(["ssh", host, "mkdir -p %s" % remote_home], check=True)
-    cmd = ["rsync", "-az", "--delete", "--exclude", "__pycache__", "--exclude", ".DS_Store"]
+    # *.local.env holds per-machine settings saved by harness-ui on the host: never overwrite or delete it.
+    cmd = ["rsync", "-az", "--delete", "--exclude", "__pycache__", "--exclude", ".DS_Store",
+           "--exclude", "*.local.env"]
     cmd += [str(config.REPO / d) for d in SYNC_DIRS]
     cmd.append("%s:%s/" % (host, remote_home))
     subprocess.run(cmd, check=True)

@@ -10,12 +10,16 @@ ENV_FILE="$HERE/profiles/$PROFILE.env"
 [ -f "$ENV_FILE" ] || { echo "no such profile: $PROFILE" >&2; exit 2; }
 # shellcheck disable=SC1090
 . "$ENV_FILE"
+# Per-machine overrides written by harness-ui (git-ignored).
+LOCAL_ENV="$HERE/profiles/$PROFILE.local.env"
+# shellcheck disable=SC1090
+[ -f "$LOCAL_ENV" ] && . "$LOCAL_ENV"
 
 BIN="$AIH_HOME/llama.cpp/build/bin/llama-server"
 [ -x "$BIN" ] || { echo "llama-server not built; run inference/build.sh" >&2; exit 1; }
 
 HOST="${HOST:-0.0.0.0}"
-THREADS="${THREADS:-$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || echo 8)}"
+[ "${THREADS:-0}" = 0 ] && THREADS="$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || echo 8)"   # 0 = auto
 mkdir -p "$AIH_HOME/slots"
 
 ARGS=(
@@ -39,6 +43,14 @@ fi
 
 [ -n "${API_KEY:-}" ] && ARGS+=(--api-key "$API_KEY")
 
+# Server-wide thinking default (requests can still override via chat_template_kwargs).
+# Qwen3.8 template: reasoning_effort low | medium | xhigh (default); "off" disables thinking.
+case "${REASONING_EFFORT:-xhigh}" in
+  off) ARGS+=(--chat-template-kwargs '{"enable_thinking":false}') ;;
+  low|medium) ARGS+=(--chat-template-kwargs "{\"reasoning_effort\":\"$REASONING_EFFORT\"}") ;;
+esac
+[ "${REASONING_BUDGET:--1}" != -1 ] && ARGS+=(--reasoning-budget "$REASONING_BUDGET")
+
 # shellcheck disable=SC2086
-echo "==> $BIN ${ARGS[*]} ${EXTRA_ARGS:-} $*"
+echo "==> $BIN ${ARGS[*]} ${EXTRA_ARGS:-} $*" | sed -E 's/(--api-key )[^ ]+/\1***/'
 exec "$BIN" "${ARGS[@]}" ${EXTRA_ARGS:-} "$@"

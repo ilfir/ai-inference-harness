@@ -6,6 +6,11 @@ models/
 *.safetensors
 *.bin
 
+# Per-machine profile overrides and UI connection settings
+inference/profiles/*.local.env
+harness-ui/settings.json
+.claude/
+
 # Runtime state
 logs/
 slots/

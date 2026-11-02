@@ -1,7 +1,8 @@
 """Paths and profile loading.
 
 Profiles live in inference/profiles/<name>.env as shell-style KEY=VALUE lines so the same file
-drives both inference/serve.sh and this package.
+drives both inference/serve.sh and this package. An optional, git-ignored <name>.local.env next to
+it holds per-machine overrides (written by harness-ui) and is applied on top.
 """
 
 import os
@@ -35,14 +36,14 @@ def _expand(value, env):
 
 
 def list_profiles():
-    return sorted(p.stem for p in PROFILES_DIR.glob("*.env"))
+    return sorted(p.stem for p in PROFILES_DIR.glob("*.env") if not p.stem.endswith(".local"))
 
 
-def load_profile(name):
-    path = PROFILES_DIR / (name + ".env")
-    if not path.exists():
-        raise SystemExit("unknown profile %r (have: %s)" % (name, ", ".join(list_profiles())))
-    env = {"HOME": str(Path.home())}
+def overrides_path(name):
+    return PROFILES_DIR / (name + ".local.env")
+
+
+def _read_env(path, env):
     for raw in path.read_text().splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -50,6 +51,16 @@ def load_profile(name):
         key, _, value = line.partition("=")
         parts = shlex.split(value, comments=True)
         env[key.strip()] = _expand(parts[0] if parts else "", env)
+
+
+def load_profile(name, overrides=True):
+    path = PROFILES_DIR / (name + ".env")
+    if not path.exists():
+        raise SystemExit("unknown profile %r (have: %s)" % (name, ", ".join(list_profiles())))
+    env = {"HOME": str(Path.home())}
+    _read_env(path, env)
+    if overrides and overrides_path(name).exists():
+        _read_env(overrides_path(name), env)
     env.pop("HOME")
     env["NAME"] = name
     return Profile(env)
