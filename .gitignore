@@ -22,3 +22,8 @@ __pycache__/
 *.pyc
 .venv/
 .DS_Store
+
+# harness-ios generated
+harness-ios/AIHarness.xcodeproj/
+harness-ios/Info.plist
+harness-ios/Assets.xcassets/AppIcon.appiconset/icon.png
