@@ -29,9 +29,11 @@ sys.path.insert(0, str(REPO))
 from harness import bench, remote  # noqa: E402
 
 import webtools  # noqa: E402
+from chats import MAX_CHATS, ChatStore  # noqa: E402
 
 STATIC = UI / "static"
 SETTINGS_FILE = Path(os.environ.get("AIH_UI_SETTINGS") or UI / "settings.json")
+CHATS = ChatStore(os.environ.get("AIH_UI_CHATS") or SETTINGS_FILE.parent / "chats.json")
 OPS = (UI / "ops.py").read_text()
 MARK = "@@AIH_JSON@@"
 
@@ -218,6 +220,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._bench(self._body())
             if path == "/api/chat":
                 return self._chat(self._body())
+            if path == "/api/chats" and method == "GET":
+                return self._json({"chats": CHATS.list(), "max": MAX_CHATS})
+            if path.startswith("/api/chats/"):
+                chat_id = path.rsplit("/", 1)[1]
+                try:
+                    if method == "GET":
+                        return self._json(CHATS.get(chat_id))
+                    if method == "POST":
+                        summary, pruned = CHATS.save(chat_id, self._body())
+                        return self._json({"chat": summary, "pruned": pruned})
+                    if method == "DELETE":
+                        CHATS.delete(chat_id)
+                        return self._json({"ok": True})
+                except KeyError:
+                    return self._json({"error": "chat not found"}, 404)
             return self._json({"error": "not found"}, 404)
         except OpError as e:
             return self._json({"error": str(e)}, 502)

@@ -69,8 +69,24 @@ th { color: var(--muted); font-weight: 600; }
 .toast { position: fixed; bottom: 20px; right: 20px; background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 8px; max-width: 420px; z-index: 10; }
 .toast.err { background: var(--bad); color: #fff; }
 .log { background: var(--code); padding: 10px; border-radius: 8px; max-height: 70vh; overflow: auto; font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
-.chat-layout { display: grid; grid-template-columns: 1fr 300px; gap: 14px; }
-@media (max-width: 900px) { .chat-layout { grid-template-columns: 1fr; } }
+.chat-layout { display: grid; grid-template-columns: 230px 1fr 300px; gap: 14px; }
+@media (max-width: 1100px) { .chat-layout { grid-template-columns: 200px 1fr; } .chat-side { grid-column: 1 / -1; } }
+@media (max-width: 700px) { .chat-layout { grid-template-columns: 1fr; } .chat-history { height: auto; max-height: 260px; } }
+.chat-history { display: flex; flex-direction: column; height: calc(100vh - 140px); margin-bottom: 0; }
+.chat-history #chat-new { width: 100%; }
+.hist-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; }
+.hist-head h3 { margin-bottom: 6px; }
+.hist-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+.hist-list li { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 8px; border-radius: 7px; cursor: pointer; }
+.hist-list li:hover { background: var(--bg); }
+.hist-list li.active { background: var(--user); }
+.hist-list .t { flex: 1; min-width: 0; }
+.hist-list .t div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-list .t .when { font-size: 11px; color: var(--muted); }
+.hist-list .del { border: none; background: none; padding: 2px 6px; color: var(--muted); visibility: hidden; font-size: 15px; line-height: 1; }
+.hist-list li:hover .del, .hist-list li.active .del { visibility: visible; }
+.hist-list .del:hover { color: var(--bad); }
+.hist-list.busy li:not(.active) { opacity: .5; cursor: default; }
 .chat-main { display: flex; flex-direction: column; height: calc(100vh - 140px); margin-bottom: 0; }
 .chat-log { flex: 1; overflow-y: auto; padding-right: 4px; }
 .msg { margin: 10px 0; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; }

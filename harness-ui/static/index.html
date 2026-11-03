@@ -105,6 +105,12 @@
     <!-- CHAT -->
     <section id="tab-chat" class="tab">
       <div class="chat-layout">
+        <div class="card chat-history">
+          <button id="chat-new" class="primary">+ New chat</button>
+          <div class="hist-head"><h3>History</h3><span class="muted small" id="hist-count"></span></div>
+          <ul id="hist-list" class="hist-list"></ul>
+          <p class="muted small" id="hist-note"></p>
+        </div>
         <div class="card chat-main">
           <div id="chat-log" class="chat-log"></div>
           <div class="chat-input">
@@ -112,7 +118,6 @@
             <div class="col">
               <button id="chat-send" class="primary">Send</button>
               <button id="chat-stopgen" class="hidden">Stop</button>
-              <button id="chat-clear">Clear</button>
             </div>
           </div>
         </div>

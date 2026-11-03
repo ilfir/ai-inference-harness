@@ -8,7 +8,7 @@ unchanged; the app drives the same code.
 
 ```bash
 harness-ui/macos/build-app.sh            # -> build/AI Harness.app
-harness-ui/macos/build-app.sh --install  # also copies it to /Applications
+harness-ui/macos/build-app.sh --install  # also copies it to ~/Applications
 ```
 
 Needs the Xcode Command Line Tools (`swiftc`, `/usr/bin/python3`, `iconutil`). Nothing prebuilt is kept in the repo:
@@ -18,7 +18,7 @@ with `harness/`, `inference/` and `client/`.
 On first launch, open **Settings → Connection** and enter the inference host's SSH target (for example
 `ai@192.168.1.49`) and its harness home (`~/ai-harness`). The app needs key-based SSH to that host, like the CLI's
 `--host` mode. Leave the host empty when the app runs on the inference machine itself. Connection settings are
-stored in `~/Library/Application Support/AI Harness/settings.json`.
+stored in `~/Library/Application Support/AI Harness/settings.json`, chat history in `chats.json` next to it.
 
 Without the app wrapper, the same UI runs in a browser:
 
@@ -32,9 +32,26 @@ python3 harness-ui/server.py --host ai@192.168.1.49   # opens http://127.0.0.1:8
 |---|---|
 | Dashboard | Start / Restart / Stop a profile (with preflight), backend status, decode speed and MTP acceptance since start, memory (wired, compressed, swap, GPU wired limit), watchdog install / remove. |
 | Settings | Per-profile settings (below) and the connection. |
-| Chat | Streaming chat with thinking effort, web access, sampling sliders and a system prompt. Shows tokens, tok/s, prompt time and MTP acceptance per reply. |
+| Chat | Streaming chat with thinking effort, web access, sampling sliders and a system prompt. Shows tokens, tok/s, prompt time and MTP acceptance per reply. Chat history on the left (below). |
 | Benchmark | The CLI's `bench` with optional context fill (8k to 125k tokens). |
 | Logs | Backend or watchdog log with filter and auto-refresh. |
+
+## Chat history
+
+Every chat is saved as you go: after each question and again when the reply finishes (including its thinking,
+web tool calls and stats line). The **History** column on the Chat tab lists them, most recently used first.
+
+- **+ New chat** starts an empty chat. It is added to the history once you send its first message, titled by that
+  message.
+- Click a chat to reopen it and keep going; the model gets the whole earlier conversation as context. Chats
+  cannot be switched while a reply is streaming (press **Stop** first).
+- **×** on a chat deletes it after a confirmation.
+- At most **20** chats are kept. When a 21st is saved, the least recently used one is removed.
+
+Sampling parameters and the system prompt are not stored per chat: the current values apply to whatever you
+send next. History is kept on this Mac, never on the inference host: in the app at
+`~/Library/Application Support/AI Harness/chats.json` (mode 600). With `server.py` run from the repo, it is
+`harness-ui/chats.json` (gitignored), or wherever `AIH_UI_CHATS` points.
 
 ## Settings
 
@@ -80,6 +97,7 @@ Fetched pages add thousands of prompt tokens, so web answers take longer than pl
 ```
 AI Harness.app (Swift, WKWebView)
   └─ server.py on 127.0.0.1:<free port>       UI, API, web tools
+       ├─ chats.json (local)                   chat history, max 20 (chats.py)
        ├─ ssh <host> python3 - <op> <json>     ops.py: status, profiles, start/stop, logs, settings
        ├─ rsync inference/ harness/ client/    before starts (same as `harness sync`)
        └─ HTTP → llama-server :8080            chat (SSE) and benchmarks

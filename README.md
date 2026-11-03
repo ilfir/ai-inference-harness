@@ -28,7 +28,7 @@ Why and how, in full: [DESIGN.md](DESIGN.md), which includes benchmarks in Appen
 | [`inference/`](inference/) | **Backend.** Build script for llama.cpp at a pinned commit, model download script, `serve.sh` launcher, serving profiles |
 | [`harness/`](harness/) | **Supervisor CLI** (Python stdlib only). Preflight checks, start/stop/status, logs, watchdog, chat, benchmarks, remote control over SSH |
 | [`client/`](client/) | **Connecting over the OpenAI protocol.** curl and Python SDK examples, Goose provider config |
-| [`harness-ui/`](harness-ui/) | **Mac app** (AI Harness.app, built from source): dashboard, settings, chat with web access and thinking effort, benchmarks, logs. See [harness-ui/README.md](harness-ui/README.md) |
+| [`harness-ui/`](harness-ui/) | **Mac app** (AI Harness.app, built from source): dashboard, settings, chat with web access, thinking effort and saved chat history, benchmarks, logs. See [harness-ui/README.md](harness-ui/README.md) |
 
 Nothing built or downloaded is committed (see [.gitignore](.gitignore)). llama.cpp is fetched at the commit in [`inference/LLAMA_CPP_COMMIT`](inference/LLAMA_CPP_COMMIT), and models are downloaded to `~/models/`.
 

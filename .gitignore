@@ -9,6 +9,7 @@ models/
 # Per-machine profile overrides and UI connection settings
 inference/profiles/*.local.env
 harness-ui/settings.json
+harness-ui/chats.json
 .claude/
 
 # Runtime state

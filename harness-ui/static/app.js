@@ -338,8 +338,12 @@ $("p-effort").onchange = () => {
 for (const [k] of PARAMS) $("p-" + k).oninput = showParams;
 applyPreset();
 
+// The open chat. Messages keep what is needed to redraw them; only role/content go to the model.
 let chatHistory = [];
+let chatId = null;
 let controller = null;
+
+const newChatId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 function addMsg(role, text) {
   const div = document.createElement("div");
@@ -349,6 +353,28 @@ function addMsg(role, text) {
   $("chat-log").append(div);
   $("chat-log").scrollTop = $("chat-log").scrollHeight;
   return { div, body };
+}
+
+function addMeta(div, text) {
+  const meta = document.createElement("div"); meta.className = "meta"; meta.textContent = text;
+  div.append(meta);
+}
+
+// Redraw a saved message (thinking collapsed, tool lines, stats).
+function renderMsg(m) {
+  const { div, body } = addMsg(m.role, m.content + (m.error ? "\n[error] " + m.error : ""));
+  if (m.role !== "assistant") return;
+  if (m.reasoning) {
+    const d = document.createElement("details");
+    const sm = document.createElement("summary"); sm.textContent = "Thinking (" + m.reasoning.length + " chars)";
+    const pre = document.createElement("div"); pre.textContent = m.reasoning;
+    d.append(sm, pre); div.insertBefore(d, body);
+  }
+  for (const t of m.tools || []) {
+    const el = document.createElement("div"); el.className = "tool" + (t.err ? " err" : ""); el.textContent = t.text;
+    div.insertBefore(el, body);
+  }
+  if (m.meta) addMeta(div, m.meta);
 }
 
 // One line per web tool call, updated in place when it finishes.
@@ -364,13 +390,106 @@ function showTool(div, before, ev) {
   el.textContent = (ev.name === "web_search" ? "🔎 " : "📄 ") + label + (ev.status === "done" ? ` — ${ev.summary}` : " …");
 }
 
+// ---- history ----
+function when(ts) {
+  const d = new Date(ts * 1000), now = new Date();
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const opts = { month: "short", day: "numeric" };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = "numeric";
+  return d.toLocaleDateString([], opts);
+}
+
+async function loadHistory() {
+  let r;
+  try { r = await api("/api/chats"); } catch (e) { $("hist-note").textContent = "History unavailable: " + e.message; return; }
+  const ul = $("hist-list");
+  ul.replaceChildren();
+  for (const c of r.chats) {
+    const li = document.createElement("li");
+    li.dataset.id = c.id;
+    li.classList.toggle("active", c.id === chatId);
+    li.title = c.title;
+    const t = document.createElement("div"); t.className = "t";
+    const a = document.createElement("div"); a.textContent = c.title;
+    const b = document.createElement("div"); b.className = "when"; b.textContent = `${when(c.updated)} · ${c.count} messages`;
+    t.append(a, b);
+    const del = document.createElement("button"); del.className = "del"; del.textContent = "×"; del.title = "Delete chat";
+    del.onclick = (e) => { e.stopPropagation(); deleteChat(c.id, c.title); };
+    li.append(t, del);
+    li.onclick = () => openChat(c.id);
+    ul.append(li);
+  }
+  if (!r.chats.length) {
+    const li = document.createElement("li"); li.className = "muted small"; li.style.cursor = "default";
+    li.textContent = "No saved chats yet."; ul.append(li);
+  }
+  $("hist-count").textContent = `${r.chats.length} / ${r.max}`;
+  $("hist-note").textContent = r.chats.length >= r.max ? `Only the ${r.max} most recent chats are kept; the oldest is removed when another is saved.` : "";
+}
+
+function markActive() {
+  document.querySelectorAll("#hist-list li").forEach((li) => li.classList.toggle("active", li.dataset.id === chatId));
+}
+
+function setGenerating(on) {
+  $("chat-send").classList.toggle("hidden", on); $("chat-stopgen").classList.toggle("hidden", !on);
+  $("hist-list").classList.toggle("busy", on);
+  $("chat-new").disabled = on;
+}
+
+// Saves run one at a time so a quick reply cannot be overwritten by the earlier save of its question.
+let saveQueue = Promise.resolve();
+function saveChat(id, messages) {
+  const snapshot = messages.slice();
+  saveQueue = saveQueue.then(() => doSave(id, snapshot));
+}
+async function doSave(id, messages) {
+  try {
+    const r = await api("/api/chats/" + id, { body: { messages } });
+    if (r.pruned && r.pruned.length) toast(`Removed ${r.pruned.length} oldest chat${r.pruned.length > 1 ? "s" : ""} (history keeps 20).`);
+  } catch (e) { toast("Could not save chat: " + e.message, true); }
+  loadHistory();
+}
+
+function newChat() {
+  if (controller) return toast("Stop the reply first.");
+  chatId = null; chatHistory = [];
+  $("chat-log").replaceChildren();
+  markActive();
+  $("chat-text").focus();
+}
+
+async function openChat(id) {
+  if (controller) return toast("Stop the reply first.");
+  if (id === chatId) return;
+  try {
+    const c = await api("/api/chats/" + id);
+    chatId = c.id; chatHistory = c.messages || [];
+    $("chat-log").replaceChildren();
+    for (const m of chatHistory) renderMsg(m);
+    markActive();
+  } catch (e) { toast(e.message, true); loadHistory(); }
+}
+
+async function deleteChat(id, title) {
+  if (controller && id === chatId) return toast("Stop the reply first.");
+  if (!confirm(`Delete the chat “${title}”? This cannot be undone.`)) return;
+  try { await api("/api/chats/" + id, { method: "DELETE" }); } catch (e) { toast(e.message, true); }
+  if (id === chatId) newChat();
+  loadHistory();
+}
+
 async function send() {
   const text = $("chat-text").value.trim();
   if (!text || controller) return;
   $("chat-text").value = "";
+  if (!chatId) chatId = newChatId();
+  const id = chatId, history = chatHistory;
   addMsg("user", text);
-  chatHistory.push({ role: "user", content: text });
-  const messages = ($("p-system").value.trim() ? [{ role: "system", content: $("p-system").value.trim() }] : []).concat(chatHistory);
+  history.push({ role: "user", content: text });
+  saveChat(id, history);
+  const messages = ($("p-system").value.trim() ? [{ role: "system", content: $("p-system").value.trim() }] : [])
+    .concat(history.map(({ role, content }) => ({ role, content })));
   const effort = $("p-effort").value;
   const body = {
     messages, temperature: +$("p-temp").value, top_p: +$("p-topp").value, top_k: +$("p-topk").value,
@@ -379,9 +498,9 @@ async function send() {
     web: $("p-web").checked,
   };
   const { div, body: out } = addMsg("assistant", "");
-  let reasoningEl = null, reasoning = "", content = "", final = null;
+  let reasoningEl = null, reasoning = "", content = "", final = null, error = null;
   controller = new AbortController();
-  $("chat-send").classList.add("hidden"); $("chat-stopgen").classList.remove("hidden");
+  setGenerating(true);
   const t0 = performance.now();
   try {
     const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
@@ -427,26 +546,33 @@ async function send() {
       }
     }
   } catch (e) {
-    if (e.name !== "AbortError") { out.textContent = content + "\n[error] " + e.message; }
+    if (e.name !== "AbortError") { error = e.message; out.textContent = content + "\n[error] " + e.message; }
   } finally {
     controller = null;
-    $("chat-send").classList.remove("hidden"); $("chat-stopgen").classList.add("hidden");
+    setGenerating(false);
   }
-  chatHistory.push({ role: "assistant", content });
-  const meta = document.createElement("div"); meta.className = "meta";
+  let meta;
   if (final) {
     const acc = final.draft_n ? ` · MTP ${Math.round((final.draft_n_accepted / final.draft_n) * 100)}%` : "";
-    meta.textContent = `${final.predicted_n} tok · ${fmt(final.predicted_per_second)} tok/s · prompt ${final.prompt_n} tok in ${fmt(final.prompt_ms / 1000)} s${acc}`;
+    meta = `${final.predicted_n} tok · ${fmt(final.predicted_per_second)} tok/s · prompt ${final.prompt_n} tok in ${fmt(final.prompt_ms / 1000)} s${acc}`;
   } else {
-    meta.textContent = `${fmt((performance.now() - t0) / 1000)} s`;
+    meta = `${fmt((performance.now() - t0) / 1000)} s`;
   }
-  div.append(meta);
+  addMeta(div, meta);
+  const msg = { role: "assistant", content, meta };
+  if (reasoning) msg.reasoning = reasoning;
+  const tools = [...div.querySelectorAll(".tool")].map((el) => ({ text: el.textContent, err: el.classList.contains("err") }));
+  if (tools.length) msg.tools = tools;
+  if (error) msg.error = error;
+  history.push(msg);
+  saveChat(id, history);
 }
 
 $("chat-send").onclick = send;
 $("chat-stopgen").onclick = () => controller && controller.abort();
-$("chat-clear").onclick = () => { chatHistory = []; $("chat-log").replaceChildren(); };
+$("chat-new").onclick = newChat;
 $("chat-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+loadHistory();
 
 // ---------------- benchmark ----------------
 $("b-run").onclick = async () => {

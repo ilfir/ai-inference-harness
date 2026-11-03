@@ -2,7 +2,7 @@
 # Build "AI Harness.app" from source (nothing prebuilt is kept in the repo).
 #
 #   harness-ui/macos/build-app.sh            -> build/AI Harness.app
-#   harness-ui/macos/build-app.sh --install  -> also copies it to /Applications
+#   harness-ui/macos/build-app.sh --install  -> also copies it to ~/Applications
 #
 # Needs the Xcode Command Line Tools (swiftc, /usr/bin/python3). The app bundles harness-ui/ plus the
 # harness/, inference/ and client/ folders it syncs to the inference host.
@@ -29,7 +29,7 @@ done
 iconutil -c icns "$ICONTMP/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONTMP"
 
-rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' --exclude 'settings.json' \
+rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' --exclude 'settings.json' --exclude 'chats.json' \
   --exclude 'macos' "$REPO/harness-ui" "$RES/"
 rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' --exclude '*.local.env' \
   "$REPO/harness" "$REPO/inference" "$REPO/client" "$RES/"
@@ -60,7 +60,9 @@ codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 echo "Built: $APP"
 
 if [ "${1:-}" = "--install" ]; then
-  rm -rf "/Applications/AI Harness.app"
-  cp -R "$APP" /Applications/
-  echo "Installed: /Applications/AI Harness.app"
+  DEST="$HOME/Applications"
+  mkdir -p "$DEST"
+  rm -rf "$DEST/AI Harness.app"
+  cp -R "$APP" "$DEST/"
+  echo "Installed: $DEST/AI Harness.app"
 fi
