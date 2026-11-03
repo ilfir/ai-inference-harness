@@ -33,6 +33,8 @@ python3 harness-ui/server.py --host ai@192.168.1.49   # opens http://127.0.0.1:8
 
 ## Tabs
 
+The app opens on the Chat tab.
+
 | Tab | What it does |
 |---|---|
 | Dashboard | Start / Restart / Stop a profile (with preflight), backend status, decode speed and MTP acceptance since start, memory (wired, compressed, swap, GPU wired limit), watchdog install / remove. |

@@ -41,7 +41,7 @@ function duration(s) {
 }
 
 // ---------------- tabs ----------------
-let activeTab = "dashboard";
+let activeTab = "chat";  // the app opens on the Chat tab
 document.querySelectorAll("#tabs button").forEach((b) =>
   b.addEventListener("click", () => {
     document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("active", x === b));

@@ -14,9 +14,9 @@
       <span class="muted" id="hdr-model">—</span>
     </div>
     <nav id="tabs">
-      <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="dashboard">Dashboard</button>
       <button data-tab="settings">Settings</button>
-      <button data-tab="chat">Chat</button>
+      <button data-tab="chat" class="active">Chat</button>
       <button data-tab="bench">Benchmark</button>
       <button data-tab="logs">Logs</button>
     </nav>
@@ -27,7 +27,7 @@
 
   <main>
     <!-- DASHBOARD -->
-    <section id="tab-dashboard" class="tab active">
+    <section id="tab-dashboard" class="tab">
       <div class="controls card">
         <label>Profile <select id="ctl-profile"></select></label>
         <button id="btn-start" class="primary">Start</button>
@@ -103,7 +103,7 @@
     </section>
 
     <!-- CHAT -->
-    <section id="tab-chat" class="tab">
+    <section id="tab-chat" class="tab active">
       <div class="chat-layout">
         <div class="card chat-history">
           <button id="chat-new" class="primary">+ New chat</button>
