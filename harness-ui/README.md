@@ -8,8 +8,13 @@ unchanged; the app drives the same code.
 
 ```bash
 harness-ui/macos/build-app.sh            # -> build/AI Harness.app
-harness-ui/macos/build-app.sh --install  # also copies it to ~/Applications
+harness-ui/macos/build-app.sh --install  # also installs it to /Applications (asks before removing old copies)
 ```
+
+`--install` always installs to `/Applications`. If a version is already installed in `/Applications` or
+`~/Applications`, it lists them and asks before removing them: type `y` to quit the running app, delete those copies
+and install the new one. Any other answer cancels the install and leaves the old copies in place (the new build stays in
+`build/AI Harness.app`).
 
 Needs the Xcode Command Line Tools (`swiftc`, `/usr/bin/python3`, `iconutil`). Nothing prebuilt is kept in the repo:
 the build compiles `macos/main.swift`, draws the icon with `macos/icon.swift` and bundles `harness-ui/` together

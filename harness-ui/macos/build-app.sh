@@ -2,7 +2,9 @@
 # Build "AI Harness.app" from source (nothing prebuilt is kept in the repo).
 #
 #   harness-ui/macos/build-app.sh            -> build/AI Harness.app
-#   harness-ui/macos/build-app.sh --install  -> also copies it to ~/Applications
+#   harness-ui/macos/build-app.sh --install  -> also installs it to /Applications. If a version is already
+#                                               installed in /Applications or ~/Applications, asks before
+#                                               removing it (answer y; anything else cancels the install).
 #
 # Needs the Xcode Command Line Tools (swiftc, /usr/bin/python3). The app bundles harness-ui/ plus the
 # harness/, inference/ and client/ folders it syncs to the inference host.
@@ -60,9 +62,48 @@ codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 echo "Built: $APP"
 
 if [ "${1:-}" = "--install" ]; then
-  DEST="$HOME/Applications"
-  mkdir -p "$DEST"
-  rm -rf "$DEST/AI Harness.app"
-  cp -R "$APP" "$DEST/"
+  DEST="/Applications"
+  BUNDLE_ID="ai.harness.ui"
+  LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+
+  # Previously installed versions, in either Applications folder.
+  OLD=()
+  for d in "$DEST/AI Harness.app" "$HOME/Applications/AI Harness.app"; do
+    [ -d "$d" ] && OLD+=("$d")
+  done
+
+  if [ ${#OLD[@]} -gt 0 ]; then
+    echo "Previously installed version(s):"
+    printf '  %s\n' "${OLD[@]}"
+    read -r -p "Remove them before installing? [y/N] " answer || answer=""
+    if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+      echo "Not removed. Installation cancelled (built app is in $APP)."
+      exit 1
+    fi
+
+    # Quit a running copy first (it stops its server on quit), so it can be deleted.
+    if pgrep -f "AI Harness.app/Contents/MacOS/AI Harness" >/dev/null; then
+      osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
+      for _ in $(seq 1 20); do pgrep -f "AI Harness.app/Contents/MacOS/AI Harness" >/dev/null || break; sleep 0.5; done
+      pkill -f "AI Harness.app/Contents/MacOS/AI Harness" 2>/dev/null || true
+      echo "Quit the running AI Harness."
+    fi
+
+    for d in "${OLD[@]}"; do
+      "$LSREGISTER" -u "$d" >/dev/null 2>&1 || true
+      if rm -rf "$d"; then
+        echo "Removed: $d"
+      else
+        echo "Could not remove $d (permissions?). Delete it by hand and run again." >&2
+        exit 1
+      fi
+    done
+  fi
+
+  if ! cp -R "$APP" "$DEST/"; then
+    echo "Could not copy to $DEST (permissions?)." >&2
+    exit 1
+  fi
+  "$LSREGISTER" -f "$DEST/AI Harness.app" >/dev/null 2>&1 || true
   echo "Installed: $DEST/AI Harness.app"
 fi
