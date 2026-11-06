@@ -73,7 +73,14 @@ struct HarnessAPI {
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         r.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (bytes, resp): (URLSession.AsyncBytes, URLResponse)
-        do { (bytes, resp) = try await URLSession.shared.bytes(for: r) }
+        do {
+            do { (bytes, resp) = try await URLSession.shared.bytes(for: r) }
+            catch let e as URLError where e.code == .networkConnectionLost || e.code == .notConnectedToInternet {
+                // Stale keep-alive connection or the app was just suspended: one fresh attempt.
+                try await Task.sleep(nanoseconds: 500_000_000)
+                (bytes, resp) = try await URLSession.shared.bytes(for: r)
+            }
+        } catch is CancellationError { throw CancellationError() }
         catch { throw APIError(message: Self.describe(error)) }
         if let h = resp as? HTTPURLResponse, h.statusCode != 200 {
             var text = ""

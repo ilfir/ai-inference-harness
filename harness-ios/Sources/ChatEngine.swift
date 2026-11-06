@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Runs a conversation against the backend, including the web tool loop, and keeps the history saved.
 @MainActor
@@ -56,6 +57,17 @@ final class ChatEngine: ObservableObject {
     }
 
     private func run() async {
+        // A long web-research reply takes minutes. Keep the screen from auto-locking and ask iOS for extra
+        // background time, otherwise iOS suspends the app and the connection to the Mac drops mid-reply.
+        UIApplication.shared.isIdleTimerDisabled = true
+        var bg = UIBackgroundTaskIdentifier.invalid
+        bg = UIApplication.shared.beginBackgroundTask(withName: "chat") {
+            UIApplication.shared.endBackgroundTask(bg); bg = .invalid
+        }
+        defer {
+            UIApplication.shared.isIdleTimerDisabled = false
+            if bg != .invalid { UIApplication.shared.endBackgroundTask(bg) }
+        }
         let cfg = settings.config
         guard let base = cfg.baseURL else { return }
         let api = HarnessAPI(base: base, apiKey: cfg.apiKey)
@@ -80,9 +92,16 @@ final class ChatEngine: ObservableObject {
                     "temperature": cfg.temperature, "top_p": cfg.topP, "top_k": Int(cfg.topK),
                     "chat_template_kwargs": kwargs,
                 ]
-                if cfg.web { body["tools"] = WebTools.tools }
+                // On the last round take the tools away so the model has to write its answer from what it gathered;
+                // otherwise a model that keeps searching ends the turn with no answer at all.
+                let finalRound = round == maxToolRounds
+                if cfg.web && !finalRound { body["tools"] = WebTools.tools }
+                else if finalRound {
+                    body["messages"] = messages + [["role": "user", "content": "You have reached the limit for web lookups. Using what you found so far, write the final answer now. Do not call any tools; say what you could not confirm."]]
+                }
 
-                // Separate rounds of thinking visually.
+                // Separate rounds visually (thinking, and the short preamble the model writes before tool calls).
+                mutateLast { if !$0.content.isEmpty && !$0.content.hasSuffix("\n\n") { $0.content += "\n\n" } }
                 mutateLast { if !$0.reasoning.isEmpty && !$0.reasoning.hasSuffix("\n\n") { $0.reasoning += "\n\n" } }
                 let r = try await api.streamRound(body) { [weak self] content, reasoning in
                     self?.mutateLast { $0.content += content; $0.reasoning += reasoning }

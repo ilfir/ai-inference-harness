@@ -342,7 +342,10 @@ class Handler(BaseHTTPRequestHandler):
                             c["arguments"] += fn.get("arguments") or ""
                         finish = ch.get("finish_reason") or finish
                     self._sse(chunk)
-            if not calls or round_no == self.MAX_TOOL_ROUNDS:
+            if not calls:
+                break
+            if round_no == self.MAX_TOOL_ROUNDS:
+                # Ignored the "no tools" request (or hit the cap some other way): nothing more to run.
                 break
             ordered = [calls[i] for i in sorted(calls)]
             msg = {"role": "assistant", "content": content, "tool_calls": [
@@ -368,6 +371,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._sse({"tool_event": {"name": call["name"], "args": args, "status": "done",
                                           "ok": "error" not in parsed, "summary": summary}})
                 body["messages"].append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+            if round_no + 1 == self.MAX_TOOL_ROUNDS:
+                # Last round: remove the tools so the model must answer with what it has gathered.
+                body.pop("tools", None)
+                body.pop("tool_choice", None)
+                body["messages"].append({"role": "user", "content": "You have reached the limit for web lookups. "
+                    "Using what you found so far, write the final answer now. Do not call any tools; "
+                    "say what you could not confirm."})
             upstream = self._upstream(url, profile, body)
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
