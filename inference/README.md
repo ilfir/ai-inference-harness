@@ -7,6 +7,7 @@ This folder holds the backend: `llama-server` from llama.cpp, built with Metal a
 | `LLAMA_CPP_COMMIT` | The llama.cpp commit that was verified to have `qwen4exp` and its MTP graph (`--spec-type draft-mtp`) |
 | `build.sh [--commit SHA] [--clean]` | Shallow-fetches that commit into `$AIH_HOME/llama.cpp` and builds `llama-server`, `llama-cli`, `llama-bench` and `llama-gguf-split` |
 | `download.sh <profile>` | Downloads a profile's model and MTP head into `MODELS_DIR`, reusing files already in the HF cache |
+| `start.sh [profile]` | Starts the backend from any directory. Runs preflight, and passes `--force` only when the free-memory check is the sole failure (stale file cache right after a stop). Does nothing if the backend is already healthy. `DRY_RUN=1` prints the command without starting. |
 | `serve.sh <profile> [args…]` | Runs `llama-server` in the foreground with the profile's settings |
 | `profiles/*.env` | Serving profiles in shell `KEY=VALUE` format, read by these scripts and by the harness |
 
