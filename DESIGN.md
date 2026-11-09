@@ -343,6 +343,17 @@ The 27B decode speed (17.7 tok/s) is below the earlier 20–24 estimate, so the 
 - Models downloaded:
   - `~/models/qwen3.8-flash-next/` holds IQ3_XXS (75.8 GB) and the MTP Q8_0 head (4.1 GB).
   - The 27B baseline is symlinked from the HF cache.
-- llama.cpp `0ec4027a2a01` is built at `~/ai-harness/llama.cpp/build/bin/`.
+- llama.cpp `0ec4027a2a01` is built at `~/ai-harness/llama.cpp/build/bin/`. All Appendix A numbers were measured on this build.
+- **Pin bump (2026-11-08):** `inference/LLAMA_CPP_COMMIT` now points at `12e9084dc1c8` (master, 2026-11-07, 191 commits newer; includes the qwen4exp/delta-net conv-state and MTP snapshot changes and Metal fusion/`mul_mm` updates). Every flag in `serve.sh` was checked to still exist in `common/arg.cpp`; none were removed. The new build is made in a separate directory on the Studio and swapped in only at the next restart. The old build stays as `llama.cpp-0ec4027` for rollback. Re-measured on the new build (2026-11-08, `harness bench`, MTP n-max 1, 128k profile): **no speed change**.
+
+| Test | Old build `0ec4027` (App. A) | New build `12e9084` |
+|---|---|---|
+| Decode, short prompt, temp 0 | 33.9 tok/s | 32.6 (3 runs, accept 79–95%) |
+| Decode, short prompt, temp 0.7 | 32.5 tok/s | 31.9 (3 runs, accept 69–96%) |
+| Prefill, 5.7k prompt | ~355 tok/s | 369–372 tok/s |
+| Prefill, 58.9k prompt | ~355 tok/s | 359 tok/s |
+| Decode at 5.7k / 58.9k context | 31.8 at 42k (n-max 2) | 31.3 / 29.6 tok/s |
+
+Differences are within run-to-run noise (3 runs, acceptance varies 69–96%). The pin bump is kept for being current, not for speed.
 - **The backend is running** with the `default` profile (128k, MTP n-max 1) on `:8080`.
 - The watchdog LaunchAgent is **not** installed. It has only been tested in the foreground.
