@@ -49,7 +49,7 @@
           <h3>Performance <span class="muted small">since start</span></h3>
           <div class="metrics">
             <div><div class="big" id="d-tps">—</div><div class="muted small">decode tok/s (avg)</div></div>
-            <div><div class="big" id="d-acc">—</div><div class="muted small">MTP acceptance</div></div>
+            <div><div class="big" id="d-acc">—</div><div class="muted small" id="d-acc-label">MTP acceptance</div></div>
           </div>
           <dl id="d-perf"></dl>
         </div>
@@ -62,7 +62,7 @@
         <div class="card">
           <h3>Watchdog</h3>
           <div class="big" id="d-wd">—</div>
-          <p class="muted small">A LaunchAgent on the host that restarts the backend after crashes or reboots and falls back to a smaller profile after an out-of-memory crash.</p>
+          <p class="muted small">A LaunchAgent on the host that restarts the llama.cpp backend after crashes or reboots and falls back to a smaller profile after an out-of-memory crash. It does not manage Strata; starting a Strata profile tells it to leave llama.cpp stopped.</p>
           <button id="btn-wd-install">Install</button>
           <button id="btn-wd-remove">Remove</button>
         </div>
@@ -81,8 +81,7 @@
           <label>Profile <select id="set-profile"></select></label>
           <span class="muted small" id="set-desc"></span>
         </div>
-        <p class="muted small">Changes are saved on the inference host as per-machine overrides
-          (<code>inference/profiles/&lt;profile&gt;.local.env</code>, not committed). Restart the backend to apply them.</p>
+        <p class="muted small" id="set-where"></p>
         <form id="set-form"></form>
         <div class="row">
           <button id="set-save" class="primary">Save</button>
@@ -97,7 +96,10 @@
         <div class="form">
           <label>SSH host <input id="cfg-host" placeholder="user@192.168.1.49"></label>
           <label>Harness home on host <input id="cfg-home" placeholder="~/ai-harness"></label>
+          <label>Strata home on host <input id="cfg-strata" placeholder="~/ai-inference-strata"></label>
         </div>
+        <p class="muted small">Strata home is the ai-inference-strata trial directory on the host (its <code>scripts/strata-start.sh</code>
+          and <code>strata-stop.sh</code> are the only way the app starts or stops Strata). Leave it as is if Strata is not set up.</p>
         <div class="row"><button id="cfg-save">Save connection</button><span class="muted small" id="cfg-msg"></span></div>
       </div>
     </section>
@@ -156,14 +158,15 @@
         </div>
         <p class="muted small">Uses the running backend. Long fills take minutes (prefill ≈350 tok/s). A random prefix defeats the prompt cache.</p>
       </div>
-      <div class="card"><table id="b-table"><thead><tr><th>When</th><th>Profile</th><th>Fill</th><th>Prompt tok</th><th>Prefill tok/s</th><th>TTFT s</th><th>Gen tok</th><th>Decode tok/s</th><th>MTP accept</th></tr></thead><tbody></tbody></table></div>
+      <div class="card"><table id="b-table"><thead><tr><th>When</th><th>Engine</th><th>Profile</th><th>Fill</th><th>Prompt tok</th><th>Prefill tok/s</th><th>TTFT s</th><th>Gen tok</th><th>Decode tok/s</th><th>MTP accept</th></tr></thead><tbody></tbody></table></div>
     </section>
 
     <!-- LOGS -->
     <section id="tab-logs" class="tab">
       <div class="card">
         <div class="row">
-          <label>Log <select id="l-which"><option value="0">Backend</option><option value="1">Watchdog</option></select></label>
+          <label>Log <select id="l-which"><option value="auto">Running backend</option><option value="backend">llama.cpp server</option>
+            <option value="strata">Strata server</option><option value="engine">Strata engine</option><option value="watchdog">Watchdog</option></select></label>
           <label>Lines <select id="l-lines"><option>100</option><option selected>300</option><option>1000</option></select></label>
           <label class="check"><input type="checkbox" id="l-auto" checked> Auto-refresh</label>
           <label>Filter <input id="l-filter" placeholder="e.g. eval time"></label>

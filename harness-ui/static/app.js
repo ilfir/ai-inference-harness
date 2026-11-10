@@ -57,25 +57,50 @@ let st = null;
 let busy = false;
 let httpHost = "127.0.0.1";
 
+const ENGINES = { llama: "llama.cpp", strata: "Strata" };
+const engineName = (e) => ENGINES[e] || e || "llama.cpp";
+
 async function loadConfig() {
   const c = await api("/api/config");
   $("hdr-conn").textContent = c.host ? "host: " + c.host : "host: this machine";
   $("cfg-host").value = c.host || "";
   $("cfg-home").value = c.remote_home || "";
+  $("cfg-strata").value = c.strata_home || "";
   httpHost = c.http_host || "127.0.0.1";
 }
 
+// One list for both engines, grouped: the llama.cpp profiles from the host, the Strata ones bundled with the app.
 async function loadProfiles() {
   const data = await api("/api/profiles");
   profiles = data.profiles;
   for (const sel of [$("ctl-profile"), $("set-profile")]) {
     const keep = sel.value;
-    sel.replaceChildren(...profiles.map((p) => new Option(`${p.name} — ${p.description}`, p.name)));
+    sel.replaceChildren();
+    for (const eng of Object.keys(ENGINES)) {
+      const group = profiles.filter((p) => (p.engine || "llama") === eng);
+      if (!group.length) continue;
+      const og = document.createElement("optgroup");
+      og.label = ENGINES[eng];
+      for (const p of group) og.append(new Option(`${p.name} — ${p.description}`, p.name));
+      sel.append(og);
+    }
     if (keep && profiles.some((p) => p.name === keep)) sel.value = keep;
+    else if (profiles.length) sel.value = runningProfile() || profiles[0].name;
   }
-  if (st && st.backend && !$("ctl-profile").dataset.touched) $("ctl-profile").value = st.backend.profile;
-  if (st && st.backend && !$("set-profile").dataset.touched) $("set-profile").value = st.backend.profile;
+  const want = runningProfile();
+  if (want && !$("ctl-profile").dataset.touched) $("ctl-profile").value = want;
+  if (want && !$("set-profile").dataset.touched) $("set-profile").value = want;
   renderSettings();
+}
+
+// The running profile when it is in the list; else the first profile of the running engine (a Strata started
+// outside the app reports "external"); else nothing.
+function runningProfile() {
+  const b = st && st.backend;
+  if (!b) return null;
+  if (profiles.some((p) => p.name === b.profile)) return b.profile;
+  const same = profiles.find((p) => (p.engine || "llama") === (b.engine || "llama"));
+  return same ? same.name : null;
 }
 
 // ---------------- dashboard ----------------
@@ -91,38 +116,63 @@ async function refreshStatus() {
   const b = st.backend, m = st.memory;
   $("ctl-msg").textContent = "";
   if (b) {
-    const ok = b.health === "ok";
+    const ok = b.health === "ok", strata = b.engine === "strata";
     $("hdr-dot").className = "dot " + (ok ? "ok" : "warn");
-    $("hdr-model").textContent = `${b.profile} · ${b.busy_slots ? b.busy_slots + " busy" : "idle"}`;
+    $("hdr-model").textContent = `${engineName(b.engine)} · ${b.profile} · ${b.busy_slots ? b.busy_slots + " busy" : "idle"}`;
     $("d-state").textContent = ok ? (b.busy_slots ? "Generating" : "Running") : "Loading…";
     const f = b.flags || {};
-    dl($("d-backend"), [
-      ["Profile", b.profile], ["PID", b.pid], ["Uptime", duration(b.uptime_s)],
+    const rows = [
+      ["Engine", engineName(b.engine) + (b.version ? " " + b.version : "")],
+      ["Profile", b.profile + (b.profile === "external" ? " (started outside the app)" : "")],
+      ["PID", b.pid], ["Uptime", duration(b.uptime_s)],
       ["Endpoint", `http://${httpHost}:${b.port}/v1`],
       ["Slots", `${b.busy_slots}/${b.slots} busy`],
       ["Context", f.ctx ? Number(f.ctx).toLocaleString() + " tokens" : "—"],
-      ["MTP", f.mtp ? `on (draft ${f.draft_n_max || 1})` : "off"],
-      ["Thinking", (f.effort || "xhigh") + (f.reasoning_budget && f.reasoning_budget !== "-1" ? `, budget ${f.reasoning_budget}` : "")],
-      ["KV cache", f.cache_type || "—"], ["Prompt cache", f.cache_ram ? f.cache_ram + " MiB" : "default"],
-      ["API key", f.auth ? "required" : "none"],
-    ]);
+    ];
+    if (strata) {
+      rows.push(
+        ["Weights", f.weights === "resident" ? "resident on GPU" : f.weights === "streaming" ? "experts streamed from SSD" : "engine decides"],
+        ["MTP", f.mtp ? `on (spec window ${f.spec || "?"})` : "off"],
+        ["Prompt-lookup draft", f.suffix_draft === "0" ? "off" : f.suffix_draft === "default" ? "engine default" : f.suffix_draft],
+        ["KV cache", f.kv || "—"], ["Conversation cache", f.conv_cache ? f.conv_cache + " MiB" : "default"],
+        ["API key", f.auth ? "required" : "none"],
+      );
+    } else {
+      rows.push(
+        ["MTP", f.mtp ? `on (draft ${f.draft_n_max || 1})` : "off"],
+        ["Thinking", (f.effort || "xhigh") + (f.reasoning_budget && f.reasoning_budget !== "-1" ? `, budget ${f.reasoning_budget}` : "")],
+        ["KV cache", f.cache_type || "—"], ["Prompt cache", f.cache_ram ? f.cache_ram + " MiB" : "default"],
+        ["API key", f.auth ? "required" : "none"],
+      );
+    }
+    dl($("d-backend"), rows);
     const s = b.stats || {}, last = s.last || {};
+    const drafting = strata ? (f.mtp || f.suffix_draft !== "0") : f.mtp;
+    $("d-acc-label").textContent = strata ? "draft acceptance" : "MTP acceptance";
     $("d-tps").textContent = fmt(s.decode_tps);
-    $("d-acc").textContent = f.mtp ? pct(s.accept) : "off";
+    $("d-acc").textContent = drafting ? pct(s.accept) : "off";
     dl($("d-perf"), [
       ["Requests", s.requests ?? "—"], ["Tokens generated", (s.generated ?? 0).toLocaleString()],
       ["Last reply", last.tokens ? `${last.tokens} tok at ${fmt(last.decode_tps)} tok/s` : "—"],
       ["Last prompt", last.prompt_tokens ? `${last.prompt_tokens} new tok at ${fmt(last.prefill_tps, 0)} tok/s` : "—"],
-      ["Last MTP accept", f.mtp ? pct(last.accept) : "—"],
+      ["Last draft accept", drafting ? pct(last.accept) : "—"],
     ]);
-    showBanner(b.settings_changed ? "Settings for the running profile changed since it started. Restart to apply." : null);
+    if (b.settings_changed) {
+      showBanner("Settings for the running profile changed since it started. Restart to apply.");
+    } else if (strata && st.desired && st.desired.running && st.watchdog.installed) {
+      showBanner("The harness watchdog still wants llama.cpp running and could start it beside Strata (out of memory).",
+        "Keep llama.cpp stopped", async () => { try { await api("/api/release", { body: {} }); toast("llama.cpp released."); } catch (e) { toast(e.message, true); } refreshStatus(); });
+    } else showBanner(null);
   } else {
     $("hdr-dot").className = "dot bad";
     $("hdr-model").textContent = "stopped";
-    $("d-state").textContent = st.desired && st.desired.running ? "Stopped (watchdog will restart)" : "Stopped";
-    dl($("d-backend"), [["Build", st.build.llama_server ? "llama-server built" : "not built — run: harness build"]]);
+    $("d-state").textContent = st.desired && st.desired.running ? "Stopped (watchdog will restart llama.cpp)" : "Stopped";
+    dl($("d-backend"), [
+      ["llama.cpp", st.build.llama_server ? "llama-server built" : "not built — run: harness build"],
+      ["Strata", st.build.strata ? "engine built in " + st.build.strata_home : "not found in " + st.build.strata_home + " (see Settings → Connection)"],
+    ]);
     $("d-tps").textContent = "—"; $("d-acc").textContent = "—"; dl($("d-perf"), []);
-    if (!$("cfg-host").value && !st.build.llama_server) {
+    if (!$("cfg-host").value && !st.build.llama_server && !st.build.strata) {
       showBanner("No inference host is set and this Mac has no backend build. Enter the host in Settings → Connection.",
         "Open Connection", () => { openTab("settings"); $("cfg-host").focus(); });
     } else showBanner(null);
@@ -172,7 +222,8 @@ async function control(action, profile) {
       showPreflight(r.preflight);
       toast("Preflight failed — see the results, or tick “Skip preflight”.", true);
     } else if (action !== "stop") {
-      toast(`Started ${name} (pid ${r.pid}). Loading the model takes 5–30 s.`);
+      toast(r.engine === "strata" ? `Started ${name} (pid ${r.pid}). Strata loads the model in about a minute (longer after a reboot).`
+        : `Started ${name} (pid ${r.pid}). Loading the model takes 5–30 s.`);
       await waitHealthy();
     } else {
       toast("Backend stopped.");
@@ -187,7 +238,7 @@ async function control(action, profile) {
 }
 
 async function waitHealthy() {
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 300; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     await refreshStatus();
     if (st && st.backend && st.backend.health === "ok") return toast("Backend ready.");
@@ -232,18 +283,28 @@ for (const [id, action] of [["btn-wd-install", "install"], ["btn-wd-remove", "un
 }
 
 // ---------------- settings ----------------
-const ORDER = ["CTX", "PARALLEL", "MTP_ENABLED", "DRAFT_N_MAX", "REASONING_EFFORT", "REASONING_BUDGET", "CACHE_TYPE", "CACHE_RAM_MB", "GPU_BUDGET_GB",
-  "THREADS", "PORT", "HOST", "API_KEY", "EXTRA_ARGS"];
+const ORDER = {
+  llama: ["CTX", "PARALLEL", "MTP_ENABLED", "DRAFT_N_MAX", "REASONING_EFFORT", "REASONING_BUDGET", "CACHE_TYPE", "CACHE_RAM_MB", "GPU_BUDGET_GB",
+    "THREADS", "PORT", "HOST", "API_KEY", "EXTRA_ARGS"],
+  strata: ["CTX", "PARALLEL", "STREAM", "MTP", "SPEC", "BATCH_MTP", "SUFFIX_DRAFT", "KV_TYPE", "CONV_CACHE_MIB", "GPU_BUDGET_GB",
+    "PORT", "HOST", "STRATA_API_KEY", "EXTRA_ARGS"],
+};
+const WHERE = {
+  llama: "Changes are saved on the inference host as per-machine overrides (inference/profiles/<profile>.local.env, not committed). Restart the backend to apply them.",
+  strata: "Changes are saved on this Mac (strata-overrides.json next to the connection settings) and passed to the host's scripts/strata-start.sh as its environment knobs. Restart the backend to apply them.",
+};
 
 function renderSettings() {
   const p = profiles.find((x) => x.name === $("set-profile").value) || profiles[0];
   if (!p) return;
+  const eng = p.engine || "llama";
   $("set-profile").value = p.name;
-  $("set-desc").textContent = `${p.model || ""}${p.alias ? " · model alias " + p.alias : ""}`;
+  $("set-desc").textContent = `${engineName(eng)} · ${p.model || ""}${p.alias ? " · model alias " + p.alias : ""}`;
+  $("set-where").textContent = WHERE[eng] || WHERE.llama;
   const form = $("set-form");
   form.replaceChildren();
   form.className = "form";
-  for (const key of ORDER) {
+  for (const key of ORDER[eng] || ORDER.llama) {
     const s = p.settings[key];
     if (!s) continue;
     if ((key === "MTP_ENABLED" || key === "DRAFT_N_MAX") && !p.mtp_available) continue;
@@ -257,7 +318,7 @@ function renderSettings() {
       input = document.createElement("input"); input.type = "checkbox"; input.checked = !!s.value;
     } else if (s.choices) {
       input = document.createElement("select");
-      for (const o of s.choices) input.add(new Option(key === "CTX" ? Number(o).toLocaleString() : o, o));
+      for (const o of s.choices) input.add(new Option(key === "CTX" ? Number(o).toLocaleString() : o === "" ? "engine default" : o, o));
       input.value = String(s.value);
     } else {
       input = document.createElement("input");
@@ -271,7 +332,7 @@ function renderSettings() {
     input.addEventListener("input", () => box.classList.add("changed"));
     const help = document.createElement("div"); help.className = "help"; help.textContent = s.help;
     const def = document.createElement("div"); def.className = "def";
-    def.textContent = s.type === "secret" ? "" : `profile default: ${s.type === "bool" ? (s.default ? "on" : "off") : (s.default === "" ? "(empty)" : s.default)}`;
+    def.textContent = s.type === "secret" ? "" : `profile default: ${s.type === "bool" ? (s.default ? "on" : "off") : (s.default === "" ? (s.choices ? "engine default" : "(empty)") : s.default)}`;
     box.append(lbl, input, help, def);
     form.append(box);
   }
@@ -308,7 +369,7 @@ $("set-reset").onclick = async () => {
 };
 $("cfg-save").onclick = async () => {
   try {
-    await api("/api/config", { body: { host: $("cfg-host").value, remote_home: $("cfg-home").value } });
+    await api("/api/config", { body: { host: $("cfg-host").value, remote_home: $("cfg-home").value, strata_home: $("cfg-strata").value } });
     await loadConfig();
     $("cfg-msg").textContent = "Saved. Reconnecting…";
     await refreshStatus();
@@ -586,7 +647,7 @@ $("b-run").onclick = async () => {
     const when = new Date().toLocaleTimeString();
     for (const row of r.rows) {
       const tr = tb.insertRow(0);
-      for (const v of [when, r.profile, r.fill ? "~" + r.fill : "—", row.prompt_tokens, fmt(row.prefill_tps, 0), fmt(row.ttft_s), row.gen_tokens, fmt(row.decode_tps), pct(row.accept)])
+      for (const v of [when, engineName(r.engine), r.profile, r.fill ? "~" + r.fill : "—", row.prompt_tokens, fmt(row.prefill_tps, 0), fmt(row.ttft_s), row.gen_tokens, fmt(row.decode_tps), pct(row.accept)])
         tr.insertCell().textContent = v ?? "—";
     }
     const dec = r.rows.map((x) => x.decode_tps).filter(Boolean);
@@ -598,7 +659,7 @@ $("b-run").onclick = async () => {
 // ---------------- logs ----------------
 async function loadLogs() {
   try {
-    const r = await api(`/api/logs?lines=${$("l-lines").value}&watchdog=${$("l-which").value}`);
+    const r = await api(`/api/logs?lines=${$("l-lines").value}&which=${$("l-which").value}`);
     const f = $("l-filter").value.toLowerCase();
     const lines = f ? r.lines.filter((l) => l.toLowerCase().includes(f)) : r.lines;
     const pre = $("l-text");

@@ -4,7 +4,9 @@
 
 Serves the UI on http://127.0.0.1:8765 (this machine only). Host operations run harness-ui/ops.py on the
 inference machine over SSH (or locally without --host). Chat and benchmarks are proxied to the backend's
-OpenAI-compatible API. Standard library only, like the CLI.
+OpenAI-compatible API, whichever engine serves it: the harness's llama.cpp profiles (inference/profiles) or
+Strata, prepared on the host by the ai-inference-strata trial (harness-ui/strata-profiles). Standard library
+only, like the CLI.
 """
 
 import argparse
@@ -28,12 +30,15 @@ sys.path.insert(0, str(REPO))
 
 from harness import bench, remote  # noqa: E402
 
+import strata  # noqa: E402
 import webtools  # noqa: E402
 from chats import MAX_CHATS, ChatStore  # noqa: E402
 
 STATIC = UI / "static"
 SETTINGS_FILE = Path(os.environ.get("AIH_UI_SETTINGS") or UI / "settings.json")
 CHATS = ChatStore(os.environ.get("AIH_UI_CHATS") or SETTINGS_FILE.parent / "chats.json")
+STRATA = strata.Store(UI / "strata-profiles", SETTINGS_FILE.parent / "strata-overrides.json")
+DEFAULT_STRATA_HOME = "~/ai-inference-strata"
 OPS = (UI / "ops.py").read_text()
 MARK = "@@AIH_JSON@@"
 
@@ -48,13 +53,19 @@ class State:
                 pass
         self.host = host if host is not None else saved.get("host", "")
         self.remote_home = remote_home or saved.get("remote_home", "~/ai-harness")
+        self.strata_home = saved.get("strata_home") or DEFAULT_STRATA_HOME
         self.lock = threading.Lock()
         self.synced = False
         self.bench_lock = threading.Lock()
 
     def save(self):
         SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        SETTINGS_FILE.write_text(json.dumps({"host": self.host, "remote_home": self.remote_home}, indent=2))
+        SETTINGS_FILE.write_text(json.dumps({"host": self.host, "remote_home": self.remote_home,
+                                             "strata_home": self.strata_home}, indent=2))
+
+    def config_view(self):
+        return {"host": self.host, "remote_home": self.remote_home, "strata_home": self.strata_home,
+                "http_host": self.http_host()}
 
     def http_host(self):
         return remote.http_host(self.host) if self.host else "127.0.0.1"
@@ -74,18 +85,22 @@ class OpError(Exception):
 
 def run_op(op, args=None, timeout=60):
     payload = json.dumps(args or {})
+    env = None
     if STATE.host:
         home = STATE.remote_home
         home = home.replace("~", "$HOME", 1) if home.startswith("~") else home
-        inner = 'cd "%s" && AIH_HOME="%s" /usr/bin/python3 - %s %s' % (
-            home, home, op, "'" + payload.replace("'", "'\\''") + "'")
+        shome = STATE.strata_home
+        shome = shome.replace("~", "$HOME", 1) if shome.startswith("~") else shome
+        inner = 'cd "%s" && AIH_HOME="%s" AIH_STRATA_HOME="%s" /usr/bin/python3 - %s %s' % (
+            home, home, shome, op, "'" + payload.replace("'", "'\\''") + "'")
         cmd = STATE.ssh_base() + [inner]
         cwd = None
     else:
         cmd = [sys.executable, "-", op, payload]
         cwd = str(REPO)
+        env = dict(os.environ, AIH_STRATA_HOME=os.path.expanduser(STATE.strata_home))
     try:
-        p = subprocess.run(cmd, input=OPS, capture_output=True, text=True, timeout=timeout, cwd=cwd)
+        p = subprocess.run(cmd, input=OPS, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env)
     except subprocess.TimeoutExpired:
         raise OpError("%s timed out" % op)
     if MARK not in p.stdout:
@@ -104,20 +119,35 @@ def ensure_synced(force=False):
 
 
 def backend_url():
+    """(base url, profile, engine) of whatever is serving the API right now."""
     st = run_op("status")
     b = st.get("backend")
     if not b:
         raise OpError("backend is not running")
-    return "http://%s:%d" % (STATE.http_host(), b["port"]), b["profile"]
+    return "http://%s:%d" % (STATE.http_host(), b["port"]), b["profile"], b.get("engine", "llama")
 
 
 _key_cache = {}
 
 
-def api_key_for(profile):
-    if profile not in _key_cache:
-        _key_cache[profile] = run_op("api_key", {"profile": profile}).get("api_key", "")
-    return _key_cache[profile]
+def api_key_for(profile, engine="llama"):
+    key = (engine, profile)
+    if key not in _key_cache:
+        _key_cache[key] = run_op("api_key", {"profile": profile, "engine": engine}).get("api_key", "")
+    return _key_cache[key]
+
+
+def is_strata(profile):
+    return STRATA.has(profile)
+
+
+def start_backend(body):
+    """Start a profile of either engine (preflight inside unless force)."""
+    name = body.get("profile", "")
+    if is_strata(name):
+        return run_op("strata_start", {"profile": name, "env": STRATA.env(name), "force": bool(body.get("force"))},
+                      timeout=180)
+    return run_op("start", body, timeout=120)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -173,45 +203,56 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             if path == "/api/config" and method == "GET":
-                return self._json({"host": STATE.host, "remote_home": STATE.remote_home,
-                                   "http_host": STATE.http_host()})
+                return self._json(STATE.config_view())
             if path == "/api/config" and method == "POST":
                 b = self._body()
                 STATE.host = b.get("host", STATE.host).strip()
                 STATE.remote_home = b.get("remote_home", STATE.remote_home).strip() or "~/ai-harness"
+                STATE.strata_home = b.get("strata_home", STATE.strata_home).strip() or DEFAULT_STRATA_HOME
                 STATE.synced = False
                 _key_cache.clear()
                 STATE.save()
-                return self._json({"host": STATE.host, "remote_home": STATE.remote_home,
-                                   "http_host": STATE.http_host()})
+                return self._json(STATE.config_view())
             if path == "/api/status":
                 return self._json(run_op("status", timeout=20))
             if path == "/api/profiles" and method == "GET":
                 ensure_synced()
-                return self._json(run_op("profiles"))
+                return self._json({"profiles": run_op("profiles")["profiles"] + STRATA.views()})
             if path.startswith("/api/profiles/"):
                 name = path.rsplit("/", 1)[1]
-                _key_cache.pop(name, None)
+                _key_cache.clear()
+                if is_strata(name):
+                    if method == "POST":
+                        return self._json(STRATA.save(name, self._body()))
+                    if method == "DELETE":
+                        return self._json(STRATA.reset(name))
                 if method == "POST":
                     return self._json(run_op("save_settings", {"profile": name, "values": self._body()}))
                 if method == "DELETE":
                     return self._json(run_op("reset_settings", {"profile": name}))
             if path == "/api/preflight":
                 ensure_synced()
-                return self._json(run_op("preflight", self._body(), timeout=120))
+                b = self._body()
+                if is_strata(b.get("profile", "")):
+                    return self._json(run_op("strata_preflight", {"profile": b["profile"], "env": STRATA.env(b["profile"])},
+                                             timeout=120))
+                return self._json(run_op("preflight", b, timeout=120))
             if path == "/api/start":
                 ensure_synced(force=True)
-                return self._json(run_op("start", self._body(), timeout=120))
+                return self._json(start_backend(self._body()))
             if path == "/api/stop":
-                return self._json(run_op("stop", timeout=60))
+                return self._json(run_op("stop", timeout=150))
             if path == "/api/restart":
                 b = self._body()
-                run_op("stop", timeout=60)
+                run_op("stop", timeout=150)
                 ensure_synced(force=True)
-                return self._json(run_op("start", b, timeout=120))
+                return self._json(start_backend(b))
+            if path == "/api/release":
+                return self._json(run_op("release_llama"))
             if path == "/api/logs":
-                args = {"lines": int(query.get("lines", ["200"])[0]),
-                        "watchdog": query.get("watchdog", ["0"])[0] == "1"}
+                args = {"lines": int(query.get("lines", ["200"])[0]), "which": query.get("which", ["auto"])[0]}
+                if query.get("watchdog", ["0"])[0] == "1":
+                    args["which"] = "watchdog"
                 return self._json(run_op("logs", args))
             if path == "/api/agent":
                 ensure_synced()
@@ -257,12 +298,13 @@ class Handler(BaseHTTPRequestHandler):
         if not STATE.bench_lock.acquire(blocking=False):
             return self._json({"error": "a benchmark is already running"}, 409)
         try:
-            url, profile = backend_url()
+            url, profile, engine = backend_url()
             model, rows = bench.run(url, model=None, max_tokens=int(b.get("max_tokens", 256)),
                                     fill=int(b.get("fill", 0)), temperature=b.get("temperature"),
-                                    runs=int(b.get("runs", 3)), api_key=api_key_for(profile) or None,
+                                    runs=int(b.get("runs", 3)), api_key=api_key_for(profile, engine) or None,
                                     log=lambda *_: None)
-            return self._json({"model": model, "profile": profile, "fill": int(b.get("fill", 0)), "rows": rows})
+            return self._json({"model": model, "profile": profile, "engine": engine, "fill": int(b.get("fill", 0)),
+                               "rows": rows})
         except urllib.error.URLError as e:
             return self._json({"error": "backend request failed: %s" % e}, 502)
         finally:
@@ -271,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
     def _upstream(self, url, profile, body):
         req = urllib.request.Request(url + "/v1/chat/completions", data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"})
-        key = api_key_for(profile)
+        key = api_key_for(*profile)
         if key:
             req.add_header("Authorization", "Bearer " + key)
         return urllib.request.urlopen(req, timeout=1800)
@@ -281,7 +323,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
     def _chat(self, body):
-        url, profile = backend_url()
+        url, name, engine = backend_url()
+        profile = (name, engine)
         web = bool(body.pop("web", False))
         body["stream"] = True
         if web:

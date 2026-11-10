@@ -31,7 +31,7 @@ done
 iconutil -c icns "$ICONTMP/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONTMP"
 
-rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' --exclude 'settings.json' --exclude 'chats.json' \
+rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' --exclude 'settings.json' --exclude 'chats.json' --exclude 'strata-overrides.json' \
   --exclude 'macos' "$REPO/harness-ui" "$RES/"
 rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' --exclude '*.local.env' \
   "$REPO/harness" "$REPO/inference" "$REPO/client" "$RES/"

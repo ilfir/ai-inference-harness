@@ -10,6 +10,7 @@ models/
 inference/profiles/*.local.env
 harness-ui/settings.json
 harness-ui/chats.json
+harness-ui/strata-overrides.json
 .claude/
 
 # Runtime state
