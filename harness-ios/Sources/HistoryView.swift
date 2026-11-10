@@ -19,8 +19,8 @@ struct HistoryView: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(c.title.isEmpty ? "Untitled" : c.title).lineLimit(2).foregroundStyle(.primary)
-                                    Text(c.updated.formatted(.relative(presentation: .named)))
-                                        .font(.caption).foregroundStyle(.secondary)
+                                    Text((engine.runningID == c.id ? "Replying… · " : "") + c.updated.formatted(.relative(presentation: .named)))
+                                        .font(.caption).foregroundStyle(engine.runningID == c.id ? Color.green : .secondary)
                                 }
                             }
                             .listRowBackground(c.id == engine.chat.id ? Color.accentColor.opacity(0.12) : nil)
@@ -28,6 +28,7 @@ struct HistoryView: View {
                         .onDelete { idx in
                             for i in idx {
                                 let c = store.chats[i]
+                                if engine.runningID == c.id { continue }     // stop the reply first
                                 store.delete(c.id)
                                 if c.id == engine.chat.id { engine.newChat() }
                             }

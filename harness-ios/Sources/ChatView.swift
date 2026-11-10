@@ -7,6 +7,7 @@ struct ChatView: View {
     @State private var showHistory = false
     @State private var showSettings = false
     @State private var status: ConnState = .idle
+    @State private var follow = true      // keep the newest text in view; dragging the list down turns it off
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -25,7 +26,7 @@ struct ChatView: View {
                 ToolbarItem(placement: .principal) { titleView }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { engine.newChat(); input = "" } label: { Image(systemName: "square.and.pencil") }
-                        .disabled(engine.streaming).accessibilityLabel("New chat")
+                        .accessibilityLabel("New chat")
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Settings")
                 }
@@ -75,23 +76,30 @@ struct ChatView: View {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     if engine.chat.messages.isEmpty { emptyState }
                     ForEach(engine.chat.messages) { m in
-                        MessageView(message: m, live: engine.streaming && m.id == engine.chat.messages.last?.id)
+                        MessageView(message: m, live: engine.viewingRunning && m.id == engine.chat.messages.last?.id)
                             .id(m.id)
                     }
-                    if let err = engine.error { errorBanner(err) }
-                    Color.clear.frame(height: 1).id("bottom")
+                    if let err = engine.visibleError { errorBanner(err) }
+                    Color.clear.frame(height: 1).id("bottom").onAppear { follow = true }
                 }
                 .padding(.horizontal, 14).padding(.top, 10)
             }
             .scrollDismissesKeyboard(.interactively)
+            // Follow new text only while you are at the bottom: pulling the list down to read stops it, and
+            // scrolling back to the bottom resumes it.
+            .simultaneousGesture(DragGesture(minimumDistance: 12).onChanged { v in
+                if v.translation.height > 12 { follow = false }
+            })
             .onChange(of: engine.chat.messages.last?.content) { _, _ in
-                if engine.streaming { proxy.scrollTo("bottom") }
+                if engine.viewingRunning && follow { proxy.scrollTo("bottom") }
             }
             .onChange(of: engine.chat.messages.last?.reasoning) { _, _ in
-                if engine.streaming { proxy.scrollTo("bottom") }
+                if engine.viewingRunning && follow { proxy.scrollTo("bottom") }
             }
-            .onChange(of: engine.chat.messages.count) { _, _ in withAnimation { proxy.scrollTo("bottom") } }
-            .onChange(of: engine.chat.id) { _, _ in proxy.scrollTo("bottom") }
+            .onChange(of: engine.chat.messages.count) { _, _ in
+                if follow || engine.viewingRunning { withAnimation { proxy.scrollTo("bottom") } }
+            }
+            .onChange(of: engine.chat.id) { _, _ in follow = true; proxy.scrollTo("bottom") }
         }
     }
 
@@ -128,6 +136,10 @@ struct ChatView: View {
 
     private var composer: some View {
         VStack(spacing: 8) {
+            if engine.streaming && !engine.viewingRunning {
+                Label("Another chat is still replying. You can send here once it finishes.", systemImage: "hourglass")
+                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            }
             HStack(spacing: 8) {
                 Menu {
                     Picker("Thinking", selection: $settings.config.effort) {
@@ -148,12 +160,12 @@ struct ChatView: View {
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
                     .submitLabel(.send)
                 Button(action: sendOrStop) {
-                    Image(systemName: engine.streaming ? "stop.circle.fill" : "arrow.up.circle.fill")
+                    Image(systemName: engine.viewingRunning ? "stop.circle.fill" : "arrow.up.circle.fill")
                         .font(.system(size: 34))
-                        .foregroundStyle(canSend || engine.streaming ? Color.accentColor : Color.gray.opacity(0.4))
+                        .foregroundStyle(canSend || engine.viewingRunning ? Color.accentColor : Color.gray.opacity(0.4))
                 }
-                .disabled(!canSend && !engine.streaming)
-                .accessibilityLabel(engine.streaming ? "Stop" : "Send")
+                .disabled(!canSend && !engine.viewingRunning)
+                .accessibilityLabel(engine.viewingRunning ? "Stop" : "Send")
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -163,7 +175,8 @@ struct ChatView: View {
     private var canSend: Bool { !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !engine.streaming }
 
     private func sendOrStop() {
-        if engine.streaming { engine.stop(); return }
+        if engine.viewingRunning { engine.stop(); return }
+        follow = true
         engine.send(input)
         input = ""
     }
@@ -199,7 +212,7 @@ struct MessageView: View {
                 ForEach(message.tools) { t in
                     HStack(spacing: 6) {
                         if t.running { ProgressView().controlSize(.mini) }
-                        else { Image(systemName: t.ok ? "globe" : "exclamationmark.triangle").font(.caption2) }
+                        else { Image(systemName: t.ok ? (t.name == "image_search" ? "photo" : "globe") : "exclamationmark.triangle").font(.caption2) }
                         Text(t.summary).font(.caption).lineLimit(2)
                     }
                     .foregroundStyle(t.ok ? Color.secondary : Color.orange)
@@ -207,7 +220,7 @@ struct MessageView: View {
                     .background(Color(.secondarySystemBackground), in: Capsule())
                 }
                 if !message.content.isEmpty {
-                    Text(rendered(message.content)).textSelection(.enabled)
+                    MarkdownView(text: message.content, streaming: live)
                 } else if live && message.reasoning.isEmpty && message.tools.isEmpty {
                     HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Waiting for the Mac…").font(.footnote).foregroundStyle(.secondary) }
                 }
@@ -233,10 +246,5 @@ struct MessageView: View {
         }
         .padding(10)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func rendered(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(allowsExtendedAttributes: true,
-            interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
     }
 }

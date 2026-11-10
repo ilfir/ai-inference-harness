@@ -4,9 +4,18 @@ import UIKit
 /// Runs a conversation against the backend, including the web tool loop, and keeps the history saved.
 @MainActor
 final class ChatEngine: ObservableObject {
-    @Published var chat = Chat()
-    @Published var streaming = false
+    @Published var chat = Chat()              // what the screen shows
+    @Published var streaming = false          // a reply is being generated, in any chat
     @Published var error: String?
+    @Published private(set) var runningID: UUID?
+    private var errorChatID: UUID?
+    /// The chat being generated. It keeps updating while you look at another chat; opening it again shows this copy.
+    private var runChat = Chat()
+
+    /// True when the reply being generated belongs to the chat on screen.
+    var viewingRunning: Bool { streaming && runningID == chat.id }
+    /// The error banner only shows in the chat it happened in.
+    var visibleError: String? { errorChatID == chat.id ? error : nil }
 
     let settings: Settings
     let store: ChatStore
@@ -19,15 +28,13 @@ final class ChatEngine: ObservableObject {
     }
 
     func newChat() {
-        guard !streaming else { return }
         chat = Chat()
-        error = nil
+        if errorChatID != nil { error = nil; errorChatID = nil }
     }
 
     func open(_ c: Chat) {
-        guard !streaming else { return }
-        chat = c
-        error = nil
+        chat = streaming && c.id == runChat.id ? runChat : c
+        if errorChatID != c.id { error = nil; errorChatID = nil }
     }
 
     func stop() { task?.cancel() }
@@ -39,8 +46,11 @@ final class ChatEngine: ObservableObject {
         chat.messages.append(ChatMessage(role: "user", content: text))
         chat.messages.append(ChatMessage(role: "assistant", content: ""))
         store.save(chat)
+        runChat = chat
+        runningID = chat.id
         streaming = true
         error = nil
+        errorChatID = nil
         task = Task { await run() }
     }
 
@@ -52,8 +62,9 @@ final class ChatEngine: ObservableObject {
     }
 
     private func mutateLast(_ f: (inout ChatMessage) -> Void) {
-        guard !chat.messages.isEmpty else { return }
-        f(&chat.messages[chat.messages.count - 1])
+        guard !runChat.messages.isEmpty else { return }
+        f(&runChat.messages[runChat.messages.count - 1])
+        if chat.id == runChat.id { chat = runChat }
     }
 
     private func run() async {
@@ -76,7 +87,7 @@ final class ChatEngine: ObservableObject {
         var system = cfg.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         if cfg.web { system += (system.isEmpty ? "" : "\n\n") + WebTools.systemHint() }
         if !system.isEmpty { messages.append(["role": "system", "content": system]) }
-        for m in chat.messages.dropLast() { messages.append(["role": m.role, "content": m.content]) }
+        for m in runChat.messages.dropLast() { messages.append(["role": m.role, "content": m.content]) }
 
         let started = Date()
         var totalTokens = 0
@@ -143,19 +154,26 @@ final class ChatEngine: ObservableObject {
             }
         } catch {
             self.error = (error as? APIError)?.message ?? error.localizedDescription
+            self.errorChatID = runChat.id
         }
         // Drop an empty assistant bubble (error before any output).
-        if let m = chat.messages.last, m.role == "assistant", m.content.isEmpty, m.reasoning.isEmpty, m.tools.isEmpty {
-            chat.messages.removeLast()
+        if let m = runChat.messages.last, m.role == "assistant", m.content.isEmpty, m.reasoning.isEmpty, m.tools.isEmpty {
+            runChat.messages.removeLast()
         }
+        if chat.id == runChat.id { chat = runChat }
         streaming = false
-        store.save(chat)
+        runningID = nil
+        store.save(runChat)
     }
 
     private static func label(_ c: ToolCall) -> String {
         let args = (try? JSONSerialization.jsonObject(with: Data(c.arguments.utf8)) as? [String: Any]) ?? [:]
         let arg = (args["query"] as? String) ?? (args["url"] as? String) ?? ""
-        return c.name == "web_search" ? "Searched “\(arg)”" : "Read \(arg)"
+        switch c.name {
+        case "web_search": return "Searched “\(arg)”"
+        case "image_search": return "Images for “\(arg)”"
+        default: return "Read \(arg)"
+        }
     }
 
     private static func stats(_ t: [String: Any]?, tokens: Int, elapsed: TimeInterval) -> String {

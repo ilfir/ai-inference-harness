@@ -37,10 +37,12 @@ echo "device: $DEV"
 say "2/3  Building"
 command -v xcodegen >/dev/null || { echo "Install xcodegen first: brew install xcodegen"; exit 1; }
 xcodegen generate >/dev/null
-xcodebuild -project AIHarness.xcodeproj -scheme AIHarness -destination "id=$DEV" -configuration Debug \
+xcodebuild -project AIHarness.xcodeproj -scheme AIHarness -destination "id=$DEV" -configuration Release \
   -derivedDataPath build -allowProvisioningUpdates DEVELOPMENT_TEAM="$TEAM" build -quiet \
   || { echo "Build failed. If it mentions signing: open Xcode → Settings → Accounts and sign in with your Apple ID."; exit 1; }
-APP="$HERE/build/Build/Products/Debug-iphoneos/AI Harness.app"
+APP="$HERE/build/Build/Products/Release-iphoneos/AI Harness.app"
+# When the signature runs out: a free Apple ID gets 7 days, a paid Apple Developer Program team gets a year.
+EXPIRES=$(security cms -D -i "$APP/embedded.mobileprovision" 2>/dev/null | plutil -extract ExpirationDate raw - 2>/dev/null || true)
 
 say "3/3  Installing"
 if ! OUT=$(xcrun devicectl device install app --device "$DEV" "$APP" 2>&1); then
@@ -59,7 +61,9 @@ xcrun devicectl device process launch --device "$DEV" ai.harness.ios >/dev/null 
 
 cat <<MSG
 
-Installed. If the app won't open ("Untrusted Developer"):
+Installed. Signed until: ${EXPIRES:-unknown} (UTC).
+If the app won't open ("Untrusted Developer"):
   iPhone Settings → General → VPN & Device Management → your Apple ID → Trust.
-Free Apple IDs expire the app after 7 days: just run this script again to renew it.
+Free Apple IDs expire the app after 7 days: run this script again before then to renew it (chat history is kept).
+A paid Apple Developer Program membership signs for a year instead.
 MSG
