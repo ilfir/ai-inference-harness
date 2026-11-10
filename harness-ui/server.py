@@ -37,6 +37,7 @@ from chats import MAX_CHATS, ChatStore  # noqa: E402
 STATIC = UI / "static"
 SETTINGS_FILE = Path(os.environ.get("AIH_UI_SETTINGS") or UI / "settings.json")
 CHATS = ChatStore(os.environ.get("AIH_UI_CHATS") or SETTINGS_FILE.parent / "chats.json")
+LAYOUT_FILE = SETTINGS_FILE.parent / "ui-layout.json"   # chat panel widths; the app's port changes each launch, so not localStorage
 STRATA = strata.Store(UI / "strata-profiles", SETTINGS_FILE.parent / "strata-overrides.json")
 DEFAULT_STRATA_HOME = "~/ai-inference-strata"
 OPS = (UI / "ops.py").read_text()
@@ -261,6 +262,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._bench(self._body())
             if path == "/api/chat":
                 return self._chat(self._body())
+            if path == "/api/layout":
+                if method == "POST":
+                    b = self._body()
+                    out = {k: int(b[k]) for k in ("hist", "side") if isinstance(b.get(k), (int, float)) and 50 <= b[k] <= 2000}
+                    LAYOUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    LAYOUT_FILE.write_text(json.dumps(out))
+                    return self._json(out)
+                try:
+                    return self._json(json.loads(LAYOUT_FILE.read_text()))
+                except (OSError, ValueError):
+                    return self._json({})
             if path == "/api/chats" and method == "GET":
                 return self._json({"chats": CHATS.list(), "max": MAX_CHATS})
             if path.startswith("/api/chats/"):

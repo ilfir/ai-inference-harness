@@ -107,12 +107,13 @@
     <!-- CHAT -->
     <section id="tab-chat" class="tab active">
       <div class="chat-layout">
-        <div class="card chat-history">
+        <div class="card chat-history" id="pane-hist">
           <button id="chat-new" class="primary">+ New chat</button>
           <div class="hist-head"><h3>History</h3><span class="muted small" id="hist-count"></span></div>
           <ul id="hist-list" class="hist-list"></ul>
           <p class="muted small" id="hist-note"></p>
         </div>
+        <div class="resizer" id="rs-hist" data-var="--hist-w" title="Drag to resize, double-click to reset"></div>
         <div class="card chat-main">
           <div id="chat-log" class="chat-log"></div>
           <div class="chat-input">
@@ -123,7 +124,8 @@
             </div>
           </div>
         </div>
-        <div class="card chat-side">
+        <div class="resizer" id="rs-side" data-var="--side-w" title="Drag to resize, double-click to reset"></div>
+        <div class="card chat-side" id="pane-side">
           <h3>Parameters</h3>
           <label>Thinking <select id="p-effort">
             <option value="xhigh">High (model default)</option><option value="medium">Medium</option>

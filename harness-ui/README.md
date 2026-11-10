@@ -52,7 +52,7 @@ The app opens on the Chat tab.
 |---|---|
 | Dashboard | Start / Restart / Stop a profile of either engine (with preflight), backend status with the engine and its running flags, decode speed and draft acceptance since start, memory (wired, compressed, swap, GPU wired limit), watchdog install / remove. |
 | Settings | Per-profile settings (below, for both engines) and the connection. |
-| Chat | Streaming chat with thinking effort, web access, sampling sliders and a system prompt. Replies render as Markdown (headings, lists, tables, code blocks with a copy button, links that open in the browser, images). Shows tokens, tok/s, prompt time and MTP acceptance per reply. Chat history on the left (below). |
+| Chat | Streaming chat with thinking effort, web access, sampling sliders and a system prompt. Replies render as Markdown (headings, lists, tables, code blocks with a copy button, links that open in the browser, images). Shows tokens, tok/s, prompt time and MTP acceptance per reply. Chat history on the left (below). Drag the dividers to resize the history and parameter panels (double-click to reset; sizes are remembered and the layout refits when the window shrinks). |
 | Benchmark | The CLI's `bench` with optional context fill (8k to 125k tokens). |
 | Logs | The running backend's log, the llama.cpp server log, the Strata server or engine log, or the watchdog log, with filter and auto-refresh. |
 
@@ -63,8 +63,10 @@ web tool calls and stats line). The **History** column on the Chat tab lists the
 
 - **+ New chat** starts an empty chat. It is added to the history once you send its first message, titled by that
   message.
-- Click a chat to reopen it and keep going; the model gets the whole earlier conversation as context. Chats
-  cannot be switched while a reply is streaming (press **Stop** first).
+- Click a chat to reopen it and keep going; the model gets the whole earlier conversation as context. You can
+  switch chats or start a new one while a reply is streaming: it keeps going in the background (marked
+  "replying" in the list) and is there when you come back. The backend answers one request at a time, so Send
+  in another chat waits until that reply finishes or you press **Stop**.
 - **×** on a chat deletes it after a confirmation.
 - At most **20** chats are kept. When a 21st is saved, the least recently used one is removed.
 

@@ -402,7 +402,9 @@ applyPreset();
 // The open chat. Messages keep what is needed to redraw them; only role/content go to the model.
 let chatHistory = [];
 let chatId = null;
-let controller = null;
+// The reply being generated, if any: {id, controller, div, history}. It keeps running (and keeps updating its own
+// detached message element) while you look at another chat; opening its chat again re-attaches that element.
+let gen = null;
 
 const newChatId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -413,15 +415,24 @@ function addMsg(role, text, error) {
   div.append(body);
   setBody(body, role, text, error);
   $("chat-log").append(div);
-  $("chat-log").scrollTop = $("chat-log").scrollHeight;
   return { div, body };
 }
 
+// Follow new text only while you are at the bottom; scrolling up stops it, scrolling back down resumes it.
+let stick = true;
+const nearBottom = (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+$("chat-log").addEventListener("scroll", () => { stick = nearBottom($("chat-log")); });
+function scrollLog(force) {
+  const log = $("chat-log");
+  if (force) stick = true;
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+
 // Assistant replies are Markdown (markdown.js); what the user typed stays plain text.
-function setBody(body, role, text, error) {
+function setBody(body, role, text, error, streaming) {
   if (role === "assistant") {
     body.className = "md";
-    Markdown.into(body, text);
+    Markdown.into(body, text, streaming);
     const old = body.querySelector(":scope > .err"); if (old) old.remove();
     if (error) { const e = document.createElement("div"); e.className = "err"; e.textContent = "[error] " + error; body.append(e); }
   } else {
@@ -434,7 +445,12 @@ let pendingRender = null;
 function renderLater(body, text) {
   const first = !pendingRender;
   pendingRender = { body, text };
-  if (first) requestAnimationFrame(() => { const p = pendingRender; pendingRender = null; setBody(p.body, "assistant", p.text); });
+  if (first) requestAnimationFrame(() => {
+    const p = pendingRender; pendingRender = null;
+    if (!p) return;
+    setBody(p.body, "assistant", p.text, null, true);
+    if (gen && gen.id === chatId) scrollLog();
+  });
 }
 
 // Copy buttons on code blocks; images that fail to load fall back to their link.
@@ -509,6 +525,7 @@ async function loadHistory() {
     const li = document.createElement("li");
     li.dataset.id = c.id;
     li.classList.toggle("active", c.id === chatId);
+    li.classList.toggle("gen", !!gen && c.id === gen.id);
     li.title = c.title;
     const t = document.createElement("div"); t.className = "t";
     const a = document.createElement("div"); a.textContent = c.title;
@@ -532,10 +549,13 @@ function markActive() {
   document.querySelectorAll("#hist-list li").forEach((li) => li.classList.toggle("active", li.dataset.id === chatId));
 }
 
-function setGenerating(on) {
-  $("chat-send").classList.toggle("hidden", on); $("chat-stopgen").classList.toggle("hidden", !on);
-  $("hist-list").classList.toggle("busy", on);
-  $("chat-new").disabled = on;
+// Stop shows in the chat that is replying; in any other chat Send waits, because the backend answers one at a time.
+function syncControls() {
+  const here = !!gen && gen.id === chatId;
+  $("chat-send").classList.toggle("hidden", here); $("chat-stopgen").classList.toggle("hidden", !here);
+  $("chat-send").disabled = !!gen && !here;
+  $("chat-send").title = $("chat-send").disabled ? "Another chat is still replying. Wait for it or stop it first." : "";
+  document.querySelectorAll("#hist-list li").forEach((li) => li.classList.toggle("gen", !!gen && li.dataset.id === gen.id));
 }
 
 // Saves run one at a time so a quick reply cannot be overwritten by the earlier save of its question.
@@ -553,27 +573,33 @@ async function doSave(id, messages) {
 }
 
 function newChat() {
-  if (controller) return toast("Stop the reply first.");
+  openToken++;
   chatId = null; chatHistory = [];
   $("chat-log").replaceChildren();
-  markActive();
+  markActive(); syncControls();
   $("chat-text").focus();
 }
 
+let openToken = 0;
 async function openChat(id) {
-  if (controller) return toast("Stop the reply first.");
   if (id === chatId) return;
+  const token = ++openToken;
   try {
-    const c = await api("/api/chats/" + id);
+    // The chat that is replying is shown from memory: its latest answer is not saved yet.
+    const live = gen && gen.id === id ? gen : null;
+    const c = live ? { id, messages: live.history } : await api("/api/chats/" + id);
+    if (token !== openToken) return;               // a newer click won
     chatId = c.id; chatHistory = c.messages || [];
     $("chat-log").replaceChildren();
     for (const m of chatHistory) renderMsg(m);
-    markActive();
+    if (live) $("chat-log").append(live.div);
+    markActive(); syncControls();
+    scrollLog(true);
   } catch (e) { toast(e.message, true); loadHistory(); }
 }
 
 async function deleteChat(id, title) {
-  if (controller && id === chatId) return toast("Stop the reply first.");
+  if (gen && id === gen.id) return toast("Stop the reply first.");
   if (!confirm(`Delete the chat “${title}”? This cannot be undone.`)) return;
   try { await api("/api/chats/" + id, { method: "DELETE" }); } catch (e) { toast(e.message, true); }
   if (id === chatId) newChat();
@@ -582,7 +608,7 @@ async function deleteChat(id, title) {
 
 async function send() {
   const text = $("chat-text").value.trim();
-  if (!text || controller) return;
+  if (!text || gen) return;
   $("chat-text").value = "";
   if (!chatId) chatId = newChatId();
   const id = chatId, history = chatHistory;
@@ -600,8 +626,9 @@ async function send() {
   };
   const { div, body: out } = addMsg("assistant", "");
   let reasoningEl = null, reasoning = "", content = "", final = null, error = null;
-  controller = new AbortController();
-  setGenerating(true);
+  const controller = new AbortController();
+  gen = { id, controller, div, history };
+  syncControls(); scrollLog(true);
   const t0 = performance.now();
   try {
     const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
@@ -643,16 +670,16 @@ async function send() {
             content += d.content; renderLater(out, content);
           }
         }
-        $("chat-log").scrollTop = $("chat-log").scrollHeight;
+        if (chatId === id) scrollLog();
       }
     }
   } catch (e) {
     if (e.name !== "AbortError") error = e.message;
   } finally {
-    controller = null;
     pendingRender = null;
     setBody(out, "assistant", content, error);
-    setGenerating(false);
+    gen = null;
+    syncControls();
   }
   let meta;
   if (final) {
@@ -669,10 +696,72 @@ async function send() {
   if (error) msg.error = error;
   history.push(msg);
   saveChat(id, history);
+  if (chatId === id) scrollLog();
 }
 
+// ---- resizable chat panels: drag a divider, double-click it to reset; the layout refits when the window resizes ----
+(() => {
+  const layout = document.querySelector(".chat-layout");
+  const P = {
+    "--hist-w": { key: "hist", min: 150, max: 460, def: 230, pane: $("pane-hist") },
+    "--side-w": { key: "side", min: 220, max: 600, def: 300, pane: $("pane-side") },
+  };
+  const want = { "--hist-w": P["--hist-w"].def, "--side-w": P["--side-w"].def };   // what the user chose
+  const CENTER_MIN = 320, GAP = 14;
+  const narrow = () => matchMedia("(max-width: 900px)").matches, tiny = () => matchMedia("(max-width: 640px)").matches;
+
+  function fit() {
+    let h = want["--hist-w"], s = want["--side-w"];
+    if (!tiny()) {
+      const room = layout.clientWidth - GAP * (narrow() ? 1 : 2) - CENTER_MIN;
+      if (narrow()) h = Math.max(P["--hist-w"].min, Math.min(h, room));
+      else if (h + s > room) {                       // squeeze the parameters first, then the history
+        let over = h + s - room;
+        const cutS = Math.min(over, s - P["--side-w"].min); s -= cutS; over -= cutS;
+        h = Math.max(P["--hist-w"].min, h - over);
+      }
+    }
+    layout.style.setProperty("--hist-w", Math.round(h) + "px");
+    layout.style.setProperty("--side-w", Math.round(s) + "px");
+  }
+
+  let saveTimer = null;
+  const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => api("/api/layout", { body: { hist: Math.round(want["--hist-w"]), side: Math.round(want["--side-w"]) } }).catch(() => {}), 300); };
+
+  for (const rs of document.querySelectorAll(".resizer")) {
+    const v = rs.dataset.var, p = P[v], dir = v === "--hist-w" ? 1 : -1;
+    rs.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      rs.setPointerCapture(e.pointerId);
+      const x0 = e.clientX, w0 = p.pane.getBoundingClientRect().width;
+      rs.classList.add("drag"); document.body.classList.add("resizing");
+      const move = (ev) => {
+        const other = P[v === "--hist-w" ? "--side-w" : "--hist-w"];
+        const otherW = narrow() && v === "--hist-w" ? 0 : other.pane.getBoundingClientRect().width;
+        const room = layout.clientWidth - GAP * (narrow() ? 1 : 2) - CENTER_MIN - otherW;
+        want[v] = Math.max(p.min, Math.min(p.max, room, w0 + dir * (ev.clientX - x0)));
+        fit();
+      };
+      const up = () => {
+        rs.classList.remove("drag"); document.body.classList.remove("resizing");
+        rs.removeEventListener("pointermove", move); rs.removeEventListener("pointerup", up); rs.removeEventListener("pointercancel", up);
+        save();
+      };
+      rs.addEventListener("pointermove", move); rs.addEventListener("pointerup", up); rs.addEventListener("pointercancel", up);
+    });
+    rs.addEventListener("dblclick", () => { want[v] = p.def; fit(); save(); });
+  }
+
+  new ResizeObserver(fit).observe(layout);
+  fit();
+  api("/api/layout").then((r) => {
+    for (const [v, p] of Object.entries(P)) if (typeof r[p.key] === "number") want[v] = Math.max(p.min, Math.min(p.max, r[p.key]));
+    fit();
+  }).catch(() => {});
+})();
+
 $("chat-send").onclick = send;
-$("chat-stopgen").onclick = () => controller && controller.abort();
+$("chat-stopgen").onclick = () => gen && gen.controller.abort();
 $("chat-new").onclick = newChat;
 $("chat-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
 loadHistory();

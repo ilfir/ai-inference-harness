@@ -69,9 +69,26 @@ th { color: var(--muted); font-weight: 600; }
 .toast { position: fixed; bottom: 20px; right: 20px; background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 8px; max-width: 420px; z-index: 10; }
 .toast.err { background: var(--bad); color: #fff; }
 .log { background: var(--code); padding: 10px; border-radius: 8px; max-height: 70vh; overflow: auto; font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
-.chat-layout { display: grid; grid-template-columns: 230px 1fr 300px; gap: 14px; }
-@media (max-width: 1100px) { .chat-layout { grid-template-columns: 200px 1fr; } .chat-side { grid-column: 1 / -1; } }
-@media (max-width: 700px) { .chat-layout { grid-template-columns: 1fr; } .chat-history { height: auto; max-height: 260px; } }
+/* Three panels with draggable dividers; widths live in --hist-w / --side-w (saved by app.js). The middle column
+   is minmax(0, 1fr) so wide tables or code scroll inside it instead of pushing the parameters off-screen. */
+main:has(#tab-chat.active) { max-width: none; }
+.chat-layout { display: grid; grid-template-columns: var(--hist-w, 230px) 14px minmax(0, 1fr) 14px var(--side-w, 300px); gap: 0; }
+.chat-layout > .card { min-width: 0; }
+.resizer { cursor: col-resize; position: relative; touch-action: none; user-select: none; }
+.resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 6px; width: 2px; border-radius: 2px; background: transparent; transition: background .12s; }
+.resizer:hover::after, .resizer.drag::after { background: var(--accent); }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing iframe, body.resizing .chat-log { pointer-events: none; }
+@media (max-width: 900px) {
+  .chat-layout { grid-template-columns: var(--hist-w, 230px) 14px minmax(0, 1fr); row-gap: 14px; }
+  #rs-side { display: none; }
+  .chat-side { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .chat-layout { grid-template-columns: minmax(0, 1fr); }
+  .resizer { display: none; }
+  .chat-history { height: auto; max-height: 260px; }
+}
 .chat-history { display: flex; flex-direction: column; height: calc(100vh - 140px); margin-bottom: 0; }
 .chat-history #chat-new { width: 100%; }
 .hist-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; }
@@ -80,16 +97,16 @@ th { color: var(--muted); font-weight: 600; }
 .hist-list li { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 8px; border-radius: 7px; cursor: pointer; }
 .hist-list li:hover { background: var(--bg); }
 .hist-list li.active { background: var(--user); }
+.hist-list li.gen .when::before { content: "● replying · "; color: var(--ok); }
 .hist-list .t { flex: 1; min-width: 0; }
 .hist-list .t div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hist-list .t .when { font-size: 11px; color: var(--muted); }
 .hist-list .del { border: none; background: none; padding: 2px 6px; color: var(--muted); visibility: hidden; font-size: 15px; line-height: 1; }
 .hist-list li:hover .del, .hist-list li.active .del { visibility: visible; }
 .hist-list .del:hover { color: var(--bad); }
-.hist-list.busy li:not(.active) { opacity: .5; cursor: default; }
 .chat-main { display: flex; flex-direction: column; height: calc(100vh - 140px); margin-bottom: 0; }
-.chat-log { flex: 1; overflow-y: auto; padding-right: 4px; }
-.msg { margin: 10px 0; padding: 10px 12px; border-radius: 10px; word-wrap: break-word; }
+.chat-log { flex: 1; overflow-y: auto; overflow-x: hidden; padding-right: 4px; min-height: 0; overflow-anchor: none; }
+.msg { margin: 10px 0; padding: 10px 12px; border-radius: 10px; overflow-wrap: anywhere; min-width: 0; }
 .msg.user, .msg details > div { white-space: pre-wrap; }
 .msg.user { background: var(--user); margin-left: 15%; }
 .msg.assistant { background: var(--code); margin-right: 8%; }
@@ -99,7 +116,7 @@ th { color: var(--muted); font-weight: 600; }
 .chat-input { display: flex; gap: 8px; margin-top: 10px; }
 .col { display: flex; flex-direction: column; gap: 6px; }
 .param { margin: 10px 0; } .param label { display: flex; justify-content: space-between; } .param input { width: 100%; }
-.chat-side { align-self: start; margin-bottom: 0; }
+.chat-side { align-self: start; margin-bottom: 0; max-height: calc(100vh - 140px); overflow-y: auto; }
 .msg .tool { font-size: 12px; color: var(--muted); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .msg .tool.err { color: var(--bad); }
 

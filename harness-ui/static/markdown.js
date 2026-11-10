@@ -221,16 +221,37 @@ const Markdown = (() => {
     return blocks(lines);
   }
 
-  // Update an element in place: blocks that did not change are kept, so images and selections in earlier
-  // paragraphs survive the re-renders of a streaming reply.
-  function into(el, src) {
+  // Patch the live DOM to match the new HTML instead of replacing it: only the text or nodes that really changed
+  // are touched, so a streaming reply does not flash, images do not reload and a text selection survives.
+  function syncAttrs(el, fresh) {
+    for (const a of [...el.attributes]) if (!fresh.hasAttribute(a.name)) el.removeAttribute(a.name);
+    for (const a of fresh.attributes) if (el.getAttribute(a.name) !== a.value) el.setAttribute(a.name, a.value);
+  }
+
+  function syncChildren(el, fresh) {
+    const old = [...el.childNodes], now = [...fresh.childNodes];
+    for (let i = 0; i < now.length; i++) {
+      const o = old[i], n = now[i];
+      if (!o) { el.append(n); continue; }
+      if (o.nodeType !== n.nodeType || (o.nodeType === 1 && o.tagName !== n.tagName)) { el.replaceChild(n, o); continue; }
+      if (o.nodeType === 3) { if (o.nodeValue !== n.nodeValue) o.nodeValue = n.nodeValue; continue; }
+      if (o.nodeType !== 1 || o.isEqualNode(n)) continue;
+      if (o.tagName === "IMG") { el.replaceChild(n, o); continue; }          // different src or alt: a different picture
+      if (o.classList.contains("missing")) { if (o.getAttribute("href") !== n.getAttribute("href")) el.replaceChild(n, o); continue; }
+      syncAttrs(o, n);
+      if (o.tagName !== "BUTTON") syncChildren(o, n);                          // leave the Copy / Copied button alone
+    }
+    for (let j = old.length - 1; j >= now.length; j--) old[j].remove();
+  }
+
+  // While a reply streams, hide an image whose Markdown has not finished arriving instead of showing raw "![alt](ht".
+  const PARTIAL_IMAGE = /!(?:\[[^\]\n]*|\[[^\]\n]*\]\(?[^)\n]*)$/;
+
+  function into(el, src, streaming) {
+    if (streaming) src = String(src ?? "").replace(PARTIAL_IMAGE, "");
     const t = document.createElement("template");
     t.innerHTML = render(src);
-    const fresh = [...t.content.children];
-    let k = 0;
-    while (k < el.children.length && k < fresh.length && el.children[k].outerHTML === fresh[k].outerHTML) k++;
-    while (el.children.length > k) el.lastElementChild.remove();
-    for (; k < fresh.length; k++) el.append(fresh[k]);
+    syncChildren(el, t.content);
   }
 
   return { render, into, esc };
