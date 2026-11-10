@@ -406,15 +406,53 @@ let controller = null;
 
 const newChatId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-function addMsg(role, text) {
+function addMsg(role, text, error) {
   const div = document.createElement("div");
   div.className = "msg " + role;
-  const body = document.createElement("div"); body.textContent = text;
+  const body = document.createElement("div");
   div.append(body);
+  setBody(body, role, text, error);
   $("chat-log").append(div);
   $("chat-log").scrollTop = $("chat-log").scrollHeight;
   return { div, body };
 }
+
+// Assistant replies are Markdown (markdown.js); what the user typed stays plain text.
+function setBody(body, role, text, error) {
+  if (role === "assistant") {
+    body.className = "md";
+    Markdown.into(body, text);
+    const old = body.querySelector(":scope > .err"); if (old) old.remove();
+    if (error) { const e = document.createElement("div"); e.className = "err"; e.textContent = "[error] " + error; body.append(e); }
+  } else {
+    body.textContent = text;
+  }
+}
+
+// Streaming replies re-render at most once per frame.
+let pendingRender = null;
+function renderLater(body, text) {
+  const first = !pendingRender;
+  pendingRender = { body, text };
+  if (first) requestAnimationFrame(() => { const p = pendingRender; pendingRender = null; setBody(p.body, "assistant", p.text); });
+}
+
+// Copy buttons on code blocks; images that fail to load fall back to their link.
+$("chat-log").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".md-copy");
+  if (!btn) return;
+  const code = btn.closest(".md-code").querySelector("pre").textContent;
+  try { await navigator.clipboard.writeText(code); } catch (_) {
+    const ta = document.createElement("textarea"); ta.value = code; document.body.append(ta); ta.select(); document.execCommand("copy"); ta.remove();
+  }
+  btn.textContent = "Copied"; setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+});
+$("chat-log").addEventListener("error", (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !img.closest(".md-img")) return;
+  const a = img.closest(".md-img");
+  a.classList.add("missing"); a.textContent = "Image unavailable: " + (img.alt || a.href);
+}, true);
 
 function addMeta(div, text) {
   const meta = document.createElement("div"); meta.className = "meta"; meta.textContent = text;
@@ -423,7 +461,7 @@ function addMeta(div, text) {
 
 // Redraw a saved message (thinking collapsed, tool lines, stats).
 function renderMsg(m) {
-  const { div, body } = addMsg(m.role, m.content + (m.error ? "\n[error] " + m.error : ""));
+  const { div, body } = addMsg(m.role, m.content, m.error);
   if (m.role !== "assistant") return;
   if (m.reasoning) {
     const d = document.createElement("details");
@@ -440,7 +478,8 @@ function renderMsg(m) {
 
 // One line per web tool call, updated in place when it finishes.
 function showTool(div, before, ev) {
-  const label = ev.name === "web_search" ? `Searching: ${ev.args.query || ""}` : `Reading: ${ev.args.url || ""}`;
+  const label = ev.name === "web_search" ? `Searching: ${ev.args.query || ""}`
+    : ev.name === "image_search" ? `Images: ${ev.args.query || ""}` : `Reading: ${ev.args.url || ""}`;
   let el = [...div.querySelectorAll(".tool")].find((x) => x.dataset.label === label && x.dataset.done !== "1");
   if (!el) {
     el = document.createElement("div");
@@ -448,7 +487,8 @@ function showTool(div, before, ev) {
     div.insertBefore(el, before);
   }
   if (ev.status === "done") { el.dataset.done = "1"; el.classList.toggle("err", !ev.ok); }
-  el.textContent = (ev.name === "web_search" ? "🔎 " : "📄 ") + label + (ev.status === "done" ? ` — ${ev.summary}` : " …");
+  const icon = { web_search: "🔎 ", image_search: "🖼️ " }[ev.name] || "📄 ";
+  el.textContent = icon + label + (ev.status === "done" ? ` — ${ev.summary}` : " …");
 }
 
 // ---- history ----
@@ -600,16 +640,18 @@ async function send() {
           }
           if (d.content) {
             if (reasoningEl && reasoningEl.open) { reasoningEl.open = false; reasoningEl.firstChild.textContent = "Thinking (" + reasoning.length + " chars)"; }
-            content += d.content; out.textContent = content;
+            content += d.content; renderLater(out, content);
           }
         }
         $("chat-log").scrollTop = $("chat-log").scrollHeight;
       }
     }
   } catch (e) {
-    if (e.name !== "AbortError") { error = e.message; out.textContent = content + "\n[error] " + e.message; }
+    if (e.name !== "AbortError") error = e.message;
   } finally {
     controller = null;
+    pendingRender = null;
+    setBody(out, "assistant", content, error);
     setGenerating(false);
   }
   let meta;

@@ -52,7 +52,7 @@ The app opens on the Chat tab.
 |---|---|
 | Dashboard | Start / Restart / Stop a profile of either engine (with preflight), backend status with the engine and its running flags, decode speed and draft acceptance since start, memory (wired, compressed, swap, GPU wired limit), watchdog install / remove. |
 | Settings | Per-profile settings (below, for both engines) and the connection. |
-| Chat | Streaming chat with thinking effort, web access, sampling sliders and a system prompt. Shows tokens, tok/s, prompt time and MTP acceptance per reply. Chat history on the left (below). |
+| Chat | Streaming chat with thinking effort, web access, sampling sliders and a system prompt. Replies render as Markdown (headings, lists, tables, code blocks with a copy button, links that open in the browser, images). Shows tokens, tok/s, prompt time and MTP acceptance per reply. Chat history on the left (below). |
 | Benchmark | The CLI's `bench` with optional context fill (8k to 125k tokens). |
 | Logs | The running backend's log, the llama.cpp server log, the Strata server or engine log, or the watchdog log, with filter and auto-refresh. |
 
@@ -138,9 +138,12 @@ Qwen3.8's chat template reads `reasoning_effort` (`low`, `medium`, `xhigh`; `hig
 
 ## Web access
 
-With **Web access** ticked, the app gives the model two tools and runs them on this Mac:
+With **Web access** ticked, the app gives the model three tools and runs them on this Mac:
 
 - `web_search`: DuckDuckGo results (title, URL, snippet). No API key needed.
+- `image_search`: DuckDuckGo image results (image URL, thumbnail, source page). The model shows them inline with
+  Markdown image syntax, so "show me a picture of X" works with web access on. Images load from their original
+  host (no referrer is sent); a click opens the full image in the browser.
 - `fetch_url`: the readable text of a page, truncated to 12,000 characters. Private, loopback and link-local
   addresses are refused, so pages cannot steer the model into the local network.
 

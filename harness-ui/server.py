@@ -407,7 +407,7 @@ class Handler(BaseHTTPRequestHandler):
                 parsed = json.loads(result)
                 if "error" in parsed:
                     summary = parsed["error"]
-                elif call["name"] == "web_search":
+                elif call["name"] in ("web_search", "image_search"):
                     summary = "%d results" % len(parsed.get("results", []))
                 else:
                     summary = parsed.get("title") or parsed.get("url", "")

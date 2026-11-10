@@ -118,6 +118,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         decisionHandler(.allow)
     }
 
+    // Links that open a new window (target="_blank", e.g. links and images in chat replies) go to the default browser.
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url, url.scheme?.hasPrefix("http") == true {
+            NSWorkspace.shared.open(url)
+        }
+        return nil
+    }
+
     // JavaScript alert() and confirm() as native sheets.
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
