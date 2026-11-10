@@ -114,11 +114,48 @@ The profiles live in [`inference/profiles/`](inference/profiles/). List them wit
 | Profile | Model | Context | MTP | GPU memory |
 |---|---|---|---|---|
 | `default` | Qwen3.8-Flash-Next IQ3_XXS | 128k | ✅ | ~54 GB |
+| `vision` | same, plus image input | 128k | ✅ | ~56 GB (see [Vision](#vision-image-input)) |
 | `chat` | same | 32k | ✅ | ~53 GB |
 | `chat-nomtp` | same | 32k | – | ~50 GB (used as the watchdog's out-of-memory fallback) |
 | `baseline-27b` | Qwen3.8-27B UD-Q4_K_XL | 32k | – | ~22 GB (for comparison) |
 
 To add a model or change settings, copy a profile `.env` file and edit it. `serve.sh`, `download.sh` and the harness all read the same file. Flag details are in [`inference/README.md`](inference/README.md).
+
+### Vision (image input)
+
+The default start-up is text-only. To let chat requests carry images, start the `vision` profile instead. It is the `default` profile plus the model's multimodal projector (0.9 GB). On the M1 Ultra the projector did not raise wired GPU memory measurably (53.5 GB either way); the cost is context tokens and prefill time per image (about 64 tokens for a 256x256 image, about 2500 tokens and 11 s for a 1600x1600 photo).
+
+1. **Download the projector** (once, 0.9 GB; the weights are shared with `default`):
+
+```bash
+python3 -m harness $H download vision
+```
+
+2. **Start with vision.** The backend can only run one profile at a time, so this replaces a running text-only server:
+
+```bash
+python3 -m harness $H restart vision
+```
+
+3. **Check it took.** The server should list `image` as an input modality:
+
+```bash
+curl -s http://192.168.1.49:8080/v1/models | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['architecture'])"
+```
+
+4. **Send an image** as an OpenAI-style `image_url` part (a `data:` URL with base64 works):
+
+```bash
+IMG=$(base64 -i photo.jpg); curl -s http://192.168.1.49:8080/v1/chat/completions -H 'Content-Type: application/json' -d "{\"model\":\"qwen3.8-flash-next\",\"max_tokens\":200,\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Describe this image.\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,$IMG\"}}]}]}" | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+```
+
+5. **Back to text-only:**
+
+```bash
+python3 -m harness $H restart default
+```
+
+The bundled clients (`harness chat`, harness-ui, harness-ios) send text only for now; use the API, or any OpenAI-compatible client with image support, to send pictures. For grounding tasks (coordinates, boxes) set `IMAGE_MIN_TOKENS=1024` in `inference/profiles/vision.env`, as llama.cpp recommends for Qwen-VL.
 
 ---
 
@@ -142,6 +179,7 @@ python3 -m harness $H chat                     # streaming chat in the terminal 
 python3 -m harness $H bench                    # decode/prefill speed and MTP acceptance
 python3 -m harness $H bench --fill 90000       # the same at ~125k context
 python3 -m harness $H restart chat             # switch profile
+python3 -m harness $H restart vision           # same model with image input (text-only is the default)
 python3 -m harness $H stop
 ```
 

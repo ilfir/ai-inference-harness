@@ -277,7 +277,7 @@ llama-server \
 | Wired limit resets after reboot | Preflight detects this and prints the command to fix it. |
 | M1 Ultra speed vs AtomicChat's M5 Max numbers (36 tok/s) | **Estimate only**: about 25–40 tok/s tg on the base model, about 1.2–1.5× with MTP at temp 1.0. Bench will measure the real figures. |
 | Download time (~10.7 MB/s) | Run the downloads in the background; they resume if interrupted. |
-| Vision (mmproj) | Out of scope for v1. It adds about 1–2 GB, which still fits alongside IQ3_XXS + MTP at 32k. |
+| Vision (mmproj) | ~~Out of scope for v1.~~ **Added 2026-11-09** as the opt-in `vision` profile; the default stays text-only. The 0.9 GB BF16 projector left wired memory at 53.5 GB at 128k; images cost context tokens and prefill time instead (≈2500 tokens, 11 s for a 1600×1600 photo). |
 
 **Questions for you:**
 1. ~~Which default?~~ Decided: ISTA IQ3_XXS + MTP at 128k context.

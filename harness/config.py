@@ -86,6 +86,10 @@ class Profile(dict):
         return self.models_dir / self["MTP_FILE"] if self.get("MTP_FILE") else None
 
     @property
+    def mmproj_path(self):
+        return self.models_dir / self["MMPROJ_FILE"] if self.get("MMPROJ_FILE") else None
+
+    @property
     def port(self):
         return int(self.get("PORT", 8080))
 

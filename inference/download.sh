@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fetch the model files for a profile into its MODELS_DIR.
+# Fetch the model files for a profile (weights, MTP head, vision projector) into its MODELS_DIR.
 # Reuses files already in the Hugging Face cache (symlinks) before downloading.
 # Usage: inference/download.sh <profile>
 set -euo pipefail
@@ -43,6 +43,11 @@ case "$MODEL_INCLUDE" in *'*'*) ;; *) link_from_cache "$MODEL_REPO" "$MODEL_INCL
 if [ -n "${MTP_FILE:-}" ]; then
   link_from_cache "$MTP_REPO" "$MTP_FILE"
   [ -e "$MODELS_DIR/$MTP_FILE" ] || fetch "$MTP_REPO" "$MTP_FILE"
+fi
+
+if [ -n "${MMPROJ_FILE:-}" ]; then
+  link_from_cache "$MMPROJ_REPO" "$MMPROJ_FILE"
+  [ -e "$MODELS_DIR/$MMPROJ_FILE" ] || fetch "$MMPROJ_REPO" "$MMPROJ_FILE"
 fi
 
 echo "DOWNLOAD_OK $PROFILE"

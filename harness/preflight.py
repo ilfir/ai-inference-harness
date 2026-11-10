@@ -76,6 +76,22 @@ def _mtp(profile, arch):
     return [(PASS, "MTP head", "%s (%.2f GB)" % (path.name, path.stat().st_size / 1e9))]
 
 
+def _mmproj(profile):
+    path = profile.mmproj_path
+    if path is None:
+        return [(PASS, "vision projector", "not used by this profile (text only)")]
+    if not path.exists():
+        return [(FAIL, "vision projector", "%s missing; run: harness download %s" % (path, profile.name))]
+    try:
+        meta, _ = gguf.read_header(path)
+    except (gguf.GGUFError, OSError) as e:
+        return [(FAIL, "vision projector", str(e))]
+    arch = meta.get("general.architecture", "?")
+    if arch != "clip" or not meta.get("clip.has_vision_encoder"):
+        return [(FAIL, "vision projector", "%s is not a vision mmproj (arch %s)" % (path.name, arch))]
+    return [(PASS, "vision projector", "%s (%.2f GB)" % (path.name, path.stat().st_size / 1e9))]
+
+
 def _memory(profile, backend_running):
     results = []
     need_mb = int(profile.gpu_budget_gb * 1024)
@@ -111,6 +127,7 @@ def run(profile, backend_running=False):
     model_results, arch = _model(profile)
     results += model_results
     results += _mtp(profile, arch)
+    results += _mmproj(profile)
     results += _memory(profile, backend_running)
 
     if system.port_in_use(profile.port) and not backend_running:

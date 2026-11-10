@@ -41,6 +41,12 @@ if [ -n "${MTP_FILE:-}" ]; then
   ARGS+=(-md "$MODELS_DIR/$MTP_FILE" --spec-type draft-mtp --spec-draft-n-max "${DRAFT_N_MAX:-1}" -ngld 99)
 fi
 
+# Vision: load the multimodal projector so chat requests may carry image parts (see the vision profile).
+if [ -n "${MMPROJ_FILE:-}" ]; then
+  ARGS+=(--mmproj "$MODELS_DIR/$MMPROJ_FILE")
+  [ -n "${IMAGE_MIN_TOKENS:-}" ] && ARGS+=(--image-min-tokens "$IMAGE_MIN_TOKENS")
+fi
+
 [ -n "${API_KEY:-}" ] && ARGS+=(--api-key "$API_KEY")
 
 # Server-wide thinking default (requests can still override via chat_template_kwargs).
