@@ -30,6 +30,7 @@ sys.path.insert(0, str(REPO))
 
 from harness import bench, remote  # noqa: E402
 
+import filetools  # noqa: E402
 import strata  # noqa: E402
 import webtools  # noqa: E402
 from chats import MAX_CHATS, ChatStore  # noqa: E402
@@ -149,6 +150,45 @@ def start_backend(body):
         return run_op("strata_start", {"profile": name, "env": STRATA.env(name), "force": bool(body.get("force"))},
                       timeout=180)
     return run_op("start", body, timeout=120)
+
+
+def run_tool(name, arguments, folder):
+    """Run one web or file tool call. Returns (json string for the model, parsed dict, one-line summary)."""
+    if name in filetools.NAMES:
+        if not folder:
+            result = json.dumps({"error": "this chat has no folder access"})
+        else:
+            result = filetools.call(name, arguments, folder)
+        parsed = json.loads(result)
+        return result, parsed, filetools.summary(name, parsed)
+    result = webtools.call(name, arguments)
+    parsed = json.loads(result)
+    if "error" in parsed:
+        summary = parsed["error"]
+    elif name in ("web_search", "image_search"):
+        summary = "%d results" % len(parsed.get("results", []))
+    else:
+        summary = parsed.get("title") or parsed.get("url", "")
+    return result, parsed, summary
+
+
+def pick_folder(start=""):
+    """Native folder dialog for the browser mode (the Mac app uses its own NSOpenPanel). macOS only."""
+    if sys.platform != "darwin":
+        raise OpError("the folder dialog is only available on macOS; type the path instead")
+    script = 'POSIX path of (choose folder with prompt "Folder the chat may read")'
+    if start:
+        try:
+            script = 'POSIX path of (choose folder with prompt "Folder the chat may read" default location POSIX file "%s")' % filetools.check(start)
+        except ValueError:
+            pass
+    p = subprocess.run(["osascript", "-e", "tell application \"System Events\" to activate", "-e", script],
+                       capture_output=True, text=True, timeout=600)
+    if p.returncode != 0:
+        if "-128" in p.stderr:  # user cancelled
+            return {"path": ""}
+        raise OpError(p.stderr.strip()[-300:] or "folder dialog failed")
+    return {"path": filetools.check(p.stdout.strip())}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -273,6 +313,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(json.loads(LAYOUT_FILE.read_text()))
                 except (OSError, ValueError):
                     return self._json({})
+            if path == "/api/folder/check" and method == "POST":
+                return self._json({"path": filetools.check(self._body().get("path", ""))})
+            if path == "/api/folder/pick" and method == "POST":
+                return self._json(pick_folder(self._body().get("path", "")))
             if path == "/api/chats" and method == "GET":
                 return self._json({"chats": CHATS.list(), "max": MAX_CHATS})
             if path.startswith("/api/chats/"):
@@ -338,10 +382,20 @@ class Handler(BaseHTTPRequestHandler):
         url, name, engine = backend_url()
         profile = (name, engine)
         web = bool(body.pop("web", False))
+        folder = body.pop("folder", "") or ""
+        if folder:
+            folder = filetools.check(folder)   # ValueError -> 400 when the folder is gone
         body["stream"] = True
+        tools, hints = [], []
         if web:
-            body["tools"] = webtools.TOOLS
-            hint = webtools.SYSTEM_HINT.format(date=datetime.date.today().isoformat())
+            tools += webtools.TOOLS
+            hints.append(webtools.SYSTEM_HINT.format(date=datetime.date.today().isoformat()))
+        if folder:
+            tools += filetools.TOOLS
+            hints.append(filetools.SYSTEM_HINT.format(folder=folder))
+        if tools:
+            body["tools"] = tools
+            hint = "\n\n".join(hints)
             msgs = body["messages"]
             if msgs and msgs[0].get("role") == "system":
                 msgs[0] = dict(msgs[0], content=msgs[0]["content"] + "\n\n" + hint)
@@ -358,14 +412,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         try:
-            if not web:
+            if not tools:
                 with upstream:
                     for line in upstream:
                         self.wfile.write(line)
                         if line.strip() == b"" or line.startswith(b"data:"):
                             self.wfile.flush()
                 return
-            self._tool_loop(url, profile, body, upstream)
+            self._tool_loop(url, profile, body, upstream, folder)
         except urllib.error.URLError as e:
             self._sse({"error": "backend request failed: %s" % e})
         except (BrokenPipeError, ConnectionResetError):
@@ -373,8 +427,8 @@ class Handler(BaseHTTPRequestHandler):
 
     MAX_TOOL_ROUNDS = 8
 
-    def _tool_loop(self, url, profile, body, upstream):
-        """Stream rounds to the browser, running web tool calls between them, until the model answers."""
+    def _tool_loop(self, url, profile, body, upstream, folder=""):
+        """Stream rounds to the browser, running web and file tool calls between them, until the model answers."""
         for round_no in range(self.MAX_TOOL_ROUNDS + 1):
             calls, content, reasoning, finish = {}, "", "", None
             with upstream:
@@ -415,14 +469,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     args = {}
                 self._sse({"tool_event": {"name": call["name"], "args": args, "status": "running"}})
-                result = webtools.call(call["name"], call["arguments"])
-                parsed = json.loads(result)
-                if "error" in parsed:
-                    summary = parsed["error"]
-                elif call["name"] in ("web_search", "image_search"):
-                    summary = "%d results" % len(parsed.get("results", []))
-                else:
-                    summary = parsed.get("title") or parsed.get("url", "")
+                result, parsed, summary = run_tool(call["name"], call["arguments"], folder)
                 self._sse({"tool_event": {"name": call["name"], "args": args, "status": "done",
                                           "ok": "error" not in parsed, "summary": summary}})
                 body["messages"].append({"role": "tool", "tool_call_id": tc["id"], "content": result})
@@ -430,7 +477,7 @@ class Handler(BaseHTTPRequestHandler):
                 # Last round: remove the tools so the model must answer with what it has gathered.
                 body.pop("tools", None)
                 body.pop("tool_choice", None)
-                body["messages"].append({"role": "user", "content": "You have reached the limit for web lookups. "
+                body["messages"].append({"role": "user", "content": "You have reached the limit for tool calls. "
                     "Using what you found so far, write the final answer now. Do not call any tools; "
                     "say what you could not confirm."})
             upstream = self._upstream(url, profile, body)

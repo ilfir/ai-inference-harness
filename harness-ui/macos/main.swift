@@ -7,7 +7,7 @@
 import Cocoa
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     var web: WKWebView!
     var server: Process?
@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         let config = WKWebViewConfiguration()
+        config.userContentController.add(self, name: "pickFolder")  // Chat tab: folder access for a chat
         web = WKWebView(frame: .zero, configuration: config)
         web.uiDelegate = self
         web.navigationDelegate = self
@@ -142,6 +143,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         a.addButton(withTitle: "OK")
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: window) { r in completionHandler(r == .alertFirstButtonReturn) }
+    }
+
+    // The page asks for a folder the chat may read (window.webkit.messageHandlers.pickFolder.postMessage({token,
+    // start})); the chosen path goes back through window.onFolderPicked(path, token). The server then reads files
+    // from it, so no sandbox bookmark is needed.
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "pickFolder" else { return }
+        let args = message.body as? [String: Any] ?? [:]
+        let token = (args["token"] as? NSNumber)?.intValue ?? 0
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose the folder this chat may read. The model can list, search and read its files."
+        panel.prompt = "Use folder"
+        if let start = args["start"] as? String, !start.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: start)
+        }
+        panel.beginSheetModal(for: window) { [weak self] result in
+            guard let self = self, result == .OK, let url = panel.url else { return }
+            let path = (try? JSONSerialization.data(withJSONObject: [url.path])).flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+            self.web.evaluateJavaScript("window.onFolderPicked(\(path)[0], \(token))", completionHandler: nil)
+        }
     }
 
     func buildMenu() {

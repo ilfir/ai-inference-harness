@@ -134,6 +134,12 @@
           <p class="muted small">Qwen3.8 reasoning effort. Turning thinking on or off loads the model card's recommended sampling.</p>
           <label class="check"><input type="checkbox" id="p-web"> Web access</label>
           <p class="muted small">Lets the model search the web and read pages. Searches run from this Mac.</p>
+          <div class="folder">
+            <div class="lbl">Folder access <span class="muted small">this chat</span></div>
+            <div class="path muted small" id="p-folder" title="">No folder</div>
+            <div class="row"><button id="p-folder-pick">Choose folder…</button><button id="p-folder-clear" class="hidden">Remove</button></div>
+            <p class="muted small">Lets the model list, search and read the files in that folder and its subfolders. Reads run on this Mac; the folder is saved with the chat.</p>
+          </div>
           <div class="param"><label>Temperature <output id="o-temp"></output></label><input type="range" id="p-temp" min="0" max="2" step="0.05"></div>
           <div class="param"><label>Top-p <output id="o-topp"></output></label><input type="range" id="p-topp" min="0.05" max="1" step="0.05"></div>
           <div class="param"><label>Top-k <output id="o-topk"></output></label><input type="range" id="p-topk" min="1" max="100" step="1"></div>

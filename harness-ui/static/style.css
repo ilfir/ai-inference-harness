@@ -119,6 +119,13 @@ body.resizing iframe, body.resizing .chat-log { pointer-events: none; }
 .chat-side { align-self: start; margin-bottom: 0; max-height: calc(100vh - 140px); overflow-y: auto; }
 .msg .tool { font-size: 12px; color: var(--muted); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .msg .tool.err { color: var(--bad); }
+.folder { margin: 12px 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.folder .lbl { display: flex; justify-content: space-between; font-weight: 600; }
+.folder .path { margin: 4px 0; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+.folder .path.set { color: var(--text); }
+.folder .row { margin: 6px 0 0; }
+.folder p { margin: 8px 0 0; }
+.hist-list .t .when .fld { margin-right: 4px; }
 
 /* ---- rendered Markdown in assistant replies (markdown.js) ---- */
 .md { line-height: 1.55; }

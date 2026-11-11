@@ -52,7 +52,7 @@ The app opens on the Chat tab.
 |---|---|
 | Dashboard | Start / Restart / Stop a profile of either engine (with preflight), backend status with the engine and its running flags, decode speed and draft acceptance since start, memory (wired, compressed, swap, GPU wired limit), watchdog install / remove. |
 | Settings | Per-profile settings (below, for both engines) and the connection. |
-| Chat | Streaming chat with thinking effort, web access, sampling sliders and a system prompt. Replies render as Markdown (headings, lists, tables, code blocks with a copy button, links that open in the browser, images). Shows tokens, tok/s, prompt time and MTP acceptance per reply. Chat history on the left (below). Drag the dividers to resize the history and parameter panels (double-click to reset; sizes are remembered and the layout refits when the window shrinks). |
+| Chat | Streaming chat with thinking effort, web access, folder access, sampling sliders and a system prompt. Replies render as Markdown (headings, lists, tables, code blocks with a copy button, links that open in the browser, images). Shows tokens, tok/s, prompt time and MTP acceptance per reply. Chat history on the left (below). Drag the dividers to resize the history and parameter panels (double-click to reset; sizes are remembered and the layout refits when the window shrinks). |
 | Benchmark | The CLI's `bench` with optional context fill (8k to 125k tokens). |
 | Logs | The running backend's log, the llama.cpp server log, the Strata server or engine log, or the watchdog log, with filter and auto-refresh. |
 
@@ -70,8 +70,8 @@ web tool calls and stats line). The **History** column on the Chat tab lists the
 - **×** on a chat deletes it after a confirmation.
 - At most **20** chats are kept. When a 21st is saved, the least recently used one is removed.
 
-Sampling parameters and the system prompt are not stored per chat: the current values apply to whatever you
-send next. History is kept on this Mac, never on the inference host: in the app at
+The folder a chat may read (below) is saved with the chat. Sampling parameters and the system prompt are not:
+the current values apply to whatever you send next. History is kept on this Mac, never on the inference host: in the app at
 `~/Library/Application Support/AI Harness/chats.json` (mode 600). With `server.py` run from the repo, it is
 `harness-ui/chats.json` (gitignored), or wherever `AIH_UI_CHATS` points.
 
@@ -152,12 +152,36 @@ With **Web access** ticked, the app gives the model three tools and runs them on
 The model may search and read several pages before it answers (up to 8 tool rounds). Each call shows in the chat.
 Fetched pages add thousands of prompt tokens, so web answers take longer than plain ones.
 
+## Folder access
+
+A chat can be given one folder on this Mac that the model may read. On the Chat tab, **Folder access → Choose
+folder…** opens the Mac folder panel (in a browser, the macOS dialog; elsewhere a path can be typed). The
+folder is saved with the chat and shown as 📁 in the history list; **Change…** picks another one and **Remove**
+takes it away. New chats start with no folder.
+
+With a folder set, the model gets three tools that run in the app's server on this Mac:
+
+- `list_files`: the entries of a directory (optionally recursive), with sizes.
+- `search_files`: lines containing some text across the folder (case-insensitive), optionally limited to a
+  subdirectory or a name pattern such as `*.md`. Up to 60 matches.
+- `read_file`: a text file, 12,000 characters at a time; longer files say which line to continue from.
+
+Every path the model passes is resolved under the chat's folder, so nothing outside it can be listed or read:
+`..`, absolute paths and symlinks that lead out are refused. Hidden entries (names starting with `.`) and build
+folders such as `node_modules`, `build` and `__pycache__` are skipped, binary files are not read, and files
+over 4 MB are listed but not read or searched. The system prompt tells the model to treat file contents as data,
+never as instructions. Web access and folder access can be on at the same time; the same 8-round limit covers
+both.
+
+The first time the app reads from Desktop, Documents, Downloads or an external volume, macOS asks whether
+AI Harness may access that location, as it does for any app.
+
 ## How it works
 
 ```
 AI Harness.app (Swift, WKWebView)
-  └─ server.py on 127.0.0.1:<free port>       UI, API, web tools
-       ├─ chats.json (local)                   chat history, max 20 (chats.py)
+  └─ server.py on 127.0.0.1:<free port>       UI, API, web and file tools (webtools.py, filetools.py)
+       ├─ chats.json (local)                   chat history with each chat's folder, max 20 (chats.py)
        ├─ strata-profiles/ + strata-overrides.json   Strata profiles and this Mac's overrides (strata.py)
        ├─ ssh <host> python3 - <op> <json>     ops.py: status, profiles, start/stop, logs, settings
        │     ├─ harness.backend                llama-server (inference/serve.sh)

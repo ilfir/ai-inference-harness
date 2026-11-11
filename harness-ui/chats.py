@@ -1,8 +1,9 @@
 """Chat history for the Chat tab: one JSON file, newest chats kept, at most MAX_CHATS.
 
 Stored next to the connection settings (in the app: ~/Library/Application Support/AI Harness/chats.json).
-Each chat is {id, title, created, updated, messages}; messages keep what the UI needs to redraw them
-(role, content, and for replies the thinking text, web tool lines and the stats line).
+Each chat is {id, title, created, updated, folder, messages}; folder is the directory the model may read
+(empty for none); messages keep what the UI needs to redraw them (role, content, and for replies the thinking
+text, tool lines and the stats line).
 """
 
 import json
@@ -40,7 +41,7 @@ class ChatStore:
     @staticmethod
     def _summary(c):
         return {"id": c["id"], "title": c.get("title") or "New chat", "created": c.get("created"),
-                "updated": c.get("updated"), "count": len(c.get("messages", []))}
+                "updated": c.get("updated"), "count": len(c.get("messages", [])), "folder": c.get("folder") or ""}
 
     def list(self):
         with self.lock:
@@ -66,8 +67,11 @@ class ChatStore:
             chats = self._load()
             old = next((c for c in chats if c["id"] == chat_id), None)
             title = str(body.get("title") or (old or {}).get("title") or _title(messages))[:MAX_TITLE]
+            folder = body["folder"] if "folder" in body else (old or {}).get("folder", "")
+            if folder is not None and not isinstance(folder, str):
+                raise ValueError("folder must be a string")
             chat = {"id": chat_id, "title": title, "created": (old or {}).get("created", now),
-                    "updated": now, "messages": messages}
+                    "updated": now, "folder": folder or "", "messages": messages}
             chats = [c for c in chats if c["id"] != chat_id] + [chat]
             chats.sort(key=lambda c: c.get("updated") or 0, reverse=True)
             pruned = [c["id"] for c in chats[MAX_CHATS:]]

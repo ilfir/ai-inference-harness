@@ -402,7 +402,8 @@ applyPreset();
 // The open chat. Messages keep what is needed to redraw them; only role/content go to the model.
 let chatHistory = [];
 let chatId = null;
-// The reply being generated, if any: {id, controller, div, history}. It keeps running (and keeps updating its own
+let chatFolder = "";   // absolute path the model may read in the open chat ("" for none), saved with the chat
+// The reply being generated, if any: {id, controller, div, history, folder}. It keeps running (and keeps updating its own
 // detached message element) while you look at another chat; opening its chat again re-attaches that element.
 let gen = null;
 
@@ -494,8 +495,13 @@ function renderMsg(m) {
 
 // One line per web tool call, updated in place when it finishes.
 function showTool(div, before, ev) {
-  const label = ev.name === "web_search" ? `Searching: ${ev.args.query || ""}`
-    : ev.name === "image_search" ? `Images: ${ev.args.query || ""}` : `Reading: ${ev.args.url || ""}`;
+  const a = ev.args || {};
+  const label = ev.name === "web_search" ? `Searching: ${a.query || ""}`
+    : ev.name === "image_search" ? `Images: ${a.query || ""}`
+    : ev.name === "list_files" ? `Listing: ${a.path || "."}${a.recursive ? " (recursive)" : ""}`
+    : ev.name === "search_files" ? `Searching files: ${a.query || ""}${a.path ? " in " + a.path : ""}`
+    : ev.name === "read_file" ? `Reading file: ${a.path || ""}${a.start_line > 1 ? " from line " + a.start_line : ""}`
+    : `Reading: ${a.url || ""}`;
   let el = [...div.querySelectorAll(".tool")].find((x) => x.dataset.label === label && x.dataset.done !== "1");
   if (!el) {
     el = document.createElement("div");
@@ -503,7 +509,7 @@ function showTool(div, before, ev) {
     div.insertBefore(el, before);
   }
   if (ev.status === "done") { el.dataset.done = "1"; el.classList.toggle("err", !ev.ok); }
-  const icon = { web_search: "🔎 ", image_search: "🖼️ " }[ev.name] || "📄 ";
+  const icon = { web_search: "🔎 ", image_search: "🖼️ ", list_files: "📁 ", search_files: "🔍 ", read_file: "📃 " }[ev.name] || "📄 ";
   el.textContent = icon + label + (ev.status === "done" ? ` — ${ev.summary}` : " …");
 }
 
@@ -530,6 +536,7 @@ async function loadHistory() {
     const t = document.createElement("div"); t.className = "t";
     const a = document.createElement("div"); a.textContent = c.title;
     const b = document.createElement("div"); b.className = "when"; b.textContent = `${when(c.updated)} · ${c.count} messages`;
+    if (c.folder) { const f = document.createElement("span"); f.className = "fld"; f.textContent = "📁"; f.title = c.folder; b.prepend(f); }
     t.append(a, b);
     const del = document.createElement("button"); del.className = "del"; del.textContent = "×"; del.title = "Delete chat";
     del.onclick = (e) => { e.stopPropagation(); deleteChat(c.id, c.title); };
@@ -560,13 +567,13 @@ function syncControls() {
 
 // Saves run one at a time so a quick reply cannot be overwritten by the earlier save of its question.
 let saveQueue = Promise.resolve();
-function saveChat(id, messages) {
+function saveChat(id, messages, folder) {
   const snapshot = messages.slice();
-  saveQueue = saveQueue.then(() => doSave(id, snapshot));
+  saveQueue = saveQueue.then(() => doSave(id, snapshot, folder));
 }
-async function doSave(id, messages) {
+async function doSave(id, messages, folder) {
   try {
-    const r = await api("/api/chats/" + id, { body: { messages } });
+    const r = await api("/api/chats/" + id, { body: { messages, folder: folder || "" } });
     if (r.pruned && r.pruned.length) toast(`Removed ${r.pruned.length} oldest chat${r.pruned.length > 1 ? "s" : ""} (history keeps 20).`);
   } catch (e) { toast("Could not save chat: " + e.message, true); }
   loadHistory();
@@ -574,9 +581,9 @@ async function doSave(id, messages) {
 
 function newChat() {
   openToken++;
-  chatId = null; chatHistory = [];
+  chatId = null; chatHistory = []; chatFolder = "";
   $("chat-log").replaceChildren();
-  markActive(); syncControls();
+  markActive(); syncControls(); showFolder();
   $("chat-text").focus();
 }
 
@@ -587,13 +594,13 @@ async function openChat(id) {
   try {
     // The chat that is replying is shown from memory: its latest answer is not saved yet.
     const live = gen && gen.id === id ? gen : null;
-    const c = live ? { id, messages: live.history } : await api("/api/chats/" + id);
+    const c = live ? { id, messages: live.history, folder: live.folder } : await api("/api/chats/" + id);
     if (token !== openToken) return;               // a newer click won
-    chatId = c.id; chatHistory = c.messages || [];
+    chatId = c.id; chatHistory = c.messages || []; chatFolder = c.folder || "";
     $("chat-log").replaceChildren();
     for (const m of chatHistory) renderMsg(m);
     if (live) $("chat-log").append(live.div);
-    markActive(); syncControls();
+    markActive(); syncControls(); showFolder();
     scrollLog(true);
   } catch (e) { toast(e.message, true); loadHistory(); }
 }
@@ -611,10 +618,10 @@ async function send() {
   if (!text || gen) return;
   $("chat-text").value = "";
   if (!chatId) chatId = newChatId();
-  const id = chatId, history = chatHistory;
+  const id = chatId, history = chatHistory, folder = chatFolder;
   addMsg("user", text);
   history.push({ role: "user", content: text });
-  saveChat(id, history);
+  saveChat(id, history, folder);
   const messages = ($("p-system").value.trim() ? [{ role: "system", content: $("p-system").value.trim() }] : [])
     .concat(history.map(({ role, content }) => ({ role, content })));
   const effort = $("p-effort").value;
@@ -623,11 +630,12 @@ async function send() {
     presence_penalty: +$("p-pres").value, max_tokens: +$("p-max").value,
     chat_template_kwargs: effort === "off" ? { enable_thinking: false } : { enable_thinking: true, reasoning_effort: effort },
     web: $("p-web").checked,
+    folder,
   };
   const { div, body: out } = addMsg("assistant", "");
   let reasoningEl = null, reasoning = "", content = "", final = null, error = null;
   const controller = new AbortController();
-  gen = { id, controller, div, history };
+  gen = { id, controller, div, history, folder };
   syncControls(); scrollLog(true);
   const t0 = performance.now();
   try {
@@ -695,9 +703,54 @@ async function send() {
   if (tools.length) msg.tools = tools;
   if (error) msg.error = error;
   history.push(msg);
-  saveChat(id, history);
+  saveChat(id, history, folder);
   if (chatId === id) scrollLog();
 }
+
+// ---- folder access: one folder per chat that the model may list, search and read ----
+function showFolder() {
+  const el = $("p-folder");
+  el.textContent = chatFolder || "No folder";
+  el.title = chatFolder;
+  el.classList.toggle("set", !!chatFolder);
+  $("p-folder-clear").classList.toggle("hidden", !chatFolder);
+  $("p-folder-pick").textContent = chatFolder ? "Change…" : "Choose folder…";
+}
+
+// Apply a picked or typed folder to the open chat (validated by the server), and save it if the chat exists.
+async function setFolder(path) {
+  const id = chatId;
+  let abs = "";
+  if (path) {
+    try { abs = (await api("/api/folder/check", { body: { path } })).path; } catch (e) { return toast(e.message, true); }
+  }
+  if (id !== chatId) return;                       // the user switched chats meanwhile
+  chatFolder = abs;
+  if (gen && gen.id === id) gen.folder = abs;      // applies to the next message; the running reply keeps its own
+  showFolder();
+  if (id) saveChat(id, chatHistory, abs);
+  toast(abs ? "Folder access: " + abs : "Folder access removed.");
+}
+
+// The Mac app opens a native folder panel (main.swift answers through window.onFolderPicked); in a browser the
+// server shows the macOS dialog, and anywhere else a path can be typed.
+let pickToken = 0;
+async function pickFolder() {
+  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pickFolder;
+  if (bridge) { bridge.postMessage({ token: ++pickToken, start: chatFolder }); return; }
+  $("p-folder-pick").disabled = true;
+  try {
+    const r = await api("/api/folder/pick", { body: { path: chatFolder } });
+    if (r.path) await setFolder(r.path);
+  } catch (e) {
+    const typed = prompt("Folder the chat may read (" + e.message + "):", chatFolder || "~/");
+    if (typed !== null && typed.trim()) await setFolder(typed.trim());
+  } finally { $("p-folder-pick").disabled = false; }
+}
+window.onFolderPicked = (path, token) => { if (token === pickToken && path) setFolder(path); };
+$("p-folder-pick").onclick = pickFolder;
+$("p-folder-clear").onclick = () => setFolder("");
+showFolder();
 
 // ---- resizable chat panels: drag a divider, double-click it to reset; the layout refits when the window resizes ----
 (() => {
