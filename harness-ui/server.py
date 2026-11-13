@@ -31,6 +31,7 @@ sys.path.insert(0, str(REPO))
 from harness import bench, remote  # noqa: E402
 
 import filetools  # noqa: E402
+import skills  # noqa: E402
 import strata  # noqa: E402
 import webtools  # noqa: E402
 from chats import MAX_CHATS, ChatStore  # noqa: E402
@@ -161,6 +162,10 @@ def run_tool(name, arguments, folder):
             result = filetools.call(name, arguments, folder)
         parsed = json.loads(result)
         return result, parsed, filetools.summary(name, parsed)
+    if name in skills.NAMES:
+        result = skills.call(name, arguments)
+        parsed = json.loads(result)
+        return result, parsed, skills.summary(name, parsed)
     result = webtools.call(name, arguments)
     parsed = json.loads(result)
     if "error" in parsed:
@@ -313,6 +318,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(json.loads(LAYOUT_FILE.read_text()))
                 except (OSError, ValueError):
                     return self._json({})
+            if path == "/api/skills" and method == "GET":
+                return self._json({"skills": skills.listing()})
             if path == "/api/folder/check" and method == "POST":
                 return self._json({"path": filetools.check(self._body().get("path", ""))})
             if path == "/api/folder/pick" and method == "POST":
@@ -383,6 +390,7 @@ class Handler(BaseHTTPRequestHandler):
         profile = (name, engine)
         web = bool(body.pop("web", False))
         folder = body.pop("folder", "") or ""
+        use_skills = bool(body.pop("skills", False)) and bool(skills.discover())
         if folder:
             folder = filetools.check(folder)   # ValueError -> 400 when the folder is gone
         body["stream"] = True
@@ -393,6 +401,9 @@ class Handler(BaseHTTPRequestHandler):
         if folder:
             tools += filetools.TOOLS
             hints.append(filetools.SYSTEM_HINT.format(folder=folder))
+        if use_skills:
+            tools += skills.TOOLS
+            hints.append(skills.system_hint())
         if tools:
             body["tools"] = tools
             hint = "\n\n".join(hints)

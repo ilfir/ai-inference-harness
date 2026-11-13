@@ -119,12 +119,10 @@ body.resizing iframe, body.resizing .chat-log { pointer-events: none; }
 .chat-side { align-self: start; margin-bottom: 0; max-height: calc(100vh - 140px); overflow-y: auto; }
 .msg .tool { font-size: 12px; color: var(--muted); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .msg .tool.err { color: var(--bad); }
-.folder { margin: 12px 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
-.folder .lbl { display: flex; justify-content: space-between; font-weight: 600; }
-.folder .path { margin: 4px 0; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
-.folder .path.set { color: var(--text); }
-.folder .row { margin: 6px 0 0; }
-.folder p { margin: 8px 0 0; }
+.folderbar { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.folderbar .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Menlo, monospace; }
+.folderbar .path.set { color: var(--text); }
+.folderbar button { padding: 3px 10px; }
 .hist-list .t .when .fld { margin-right: 4px; }
 
 /* ---- rendered Markdown in assistant replies (markdown.js) ---- */
@@ -159,3 +157,13 @@ body.resizing iframe, body.resizing .chat-log { pointer-events: none; }
 .md-img.missing { font-size: 12px; color: var(--muted); border: 1px dashed var(--border); padding: 6px 10px; border-radius: 8px; }
 .md-gallery { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; } .md-gallery .md-img { margin: 0; } .md-gallery img { max-height: 280px; }
 .md .err { color: var(--bad); margin-top: 8px; white-space: pre-wrap; font-size: 13px; }
+
+.working { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.working .spark { color: #d97757; font-size: 16px; display: inline-block; animation: spark-pulse 1.6s ease-in-out infinite; }
+.working .shimmer { background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 35%, var(--text) 50%, var(--muted) 65%, var(--muted) 100%);
+  background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shimmer 2s linear infinite; }
+.working .secs { font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes spark-pulse { 0%, 100% { transform: scale(.8) rotate(0deg); opacity: .5; } 50% { transform: scale(1.15) rotate(90deg); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .working .spark, .working .shimmer { animation: none; } .working .shimmer { color: var(--muted); } }

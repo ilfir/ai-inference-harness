@@ -429,6 +429,24 @@ function scrollLog(force) {
   if (stick) log.scrollTop = log.scrollHeight;
 }
 
+// "Working" indicator under a reply while it generates: a pulsing spark, a shimmering word that changes, elapsed time.
+const WORK_WORDS = ["Thinking", "Pondering", "Working", "Mulling it over", "Reasoning", "Putting it together"];
+function startWorking(div) {
+  const el = document.createElement("div");
+  el.className = "working";
+  const spark = document.createElement("span"); spark.className = "spark"; spark.textContent = "✻";
+  const word = document.createElement("span"); word.className = "shimmer";
+  const secs = document.createElement("span"); secs.className = "secs";
+  el.append(spark, word, secs);
+  div.append(el);
+  const t0 = Date.now(); let n = 0;
+  const tick = () => { secs.textContent = Math.floor((Date.now() - t0) / 1000) + "s"; };
+  const swap = () => { word.textContent = WORK_WORDS[n++ % WORK_WORDS.length] + "…"; };
+  swap(); tick();
+  const t1 = setInterval(tick, 1000), t2 = setInterval(swap, 3000);
+  return { stop() { clearInterval(t1); clearInterval(t2); el.remove(); } };
+}
+
 // Assistant replies are Markdown (markdown.js); what the user typed stays plain text.
 function setBody(body, role, text, error, streaming) {
   if (role === "assistant") {
@@ -500,6 +518,8 @@ function showTool(div, before, ev) {
     : ev.name === "image_search" ? `Images: ${a.query || ""}`
     : ev.name === "list_files" ? `Listing: ${a.path || "."}${a.recursive ? " (recursive)" : ""}`
     : ev.name === "search_files" ? `Searching files: ${a.query || ""}${a.path ? " in " + a.path : ""}`
+    : ev.name === "load_skill" ? `Loading skill: ${a.name || ""}`
+    : ev.name === "run_skill_script" ? `Running skill script: ${a.skill || ""}/${a.script || ""} ${(a.args || []).join(" ")}`
     : ev.name === "read_file" ? `Reading file: ${a.path || ""}${a.start_line > 1 ? " from line " + a.start_line : ""}`
     : `Reading: ${a.url || ""}`;
   let el = [...div.querySelectorAll(".tool")].find((x) => x.dataset.label === label && x.dataset.done !== "1");
@@ -509,7 +529,7 @@ function showTool(div, before, ev) {
     div.insertBefore(el, before);
   }
   if (ev.status === "done") { el.dataset.done = "1"; el.classList.toggle("err", !ev.ok); }
-  const icon = { web_search: "🔎 ", image_search: "🖼️ ", list_files: "📁 ", search_files: "🔍 ", read_file: "📃 " }[ev.name] || "📄 ";
+  const icon = { web_search: "🔎 ", image_search: "🖼️ ", list_files: "📁 ", search_files: "🔍 ", read_file: "📃 ", load_skill: "🧩 ", run_skill_script: "⚙️ " }[ev.name] || "📄 ";
   el.textContent = icon + label + (ev.status === "done" ? ` — ${ev.summary}` : " …");
 }
 
@@ -630,6 +650,7 @@ async function send() {
     presence_penalty: +$("p-pres").value, max_tokens: +$("p-max").value,
     chat_template_kwargs: effort === "off" ? { enable_thinking: false } : { enable_thinking: true, reasoning_effort: effort },
     web: $("p-web").checked,
+    skills: $("p-skills").checked,
     folder,
   };
   const { div, body: out } = addMsg("assistant", "");
@@ -638,6 +659,7 @@ async function send() {
   gen = { id, controller, div, history, folder };
   syncControls(); scrollLog(true);
   const t0 = performance.now();
+  const working = startWorking(div);
   try {
     const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "HTTP " + res.status); }
@@ -684,6 +706,7 @@ async function send() {
   } catch (e) {
     if (e.name !== "AbortError") error = e.message;
   } finally {
+    working.stop();
     pendingRender = null;
     setBody(out, "assistant", content, error);
     gen = null;
@@ -866,3 +889,10 @@ $("l-filter").oninput = loadLogs;
   setInterval(() => { if (!busy && activeTab === "dashboard") refreshStatus(); }, 4000);
   setInterval(() => { if (activeTab === "logs" && $("l-auto").checked) loadLogs(); }, 3000);
 })();
+
+// ---- skills: list what the server found so the user can see which skills the model can use ----
+api("/api/skills").then((r) => {
+  const names = (r.skills || []).map((s) => s.name);
+  $("p-skills-list").textContent = names.length ? "Lets the model use: " + names.join(", ") + "." : "No skills found in ~/.agents/skills, ~/.claude/skills or ~/.config/goose/skills.";
+  if (!names.length) $("p-skills").disabled = true;
+}).catch(() => {});

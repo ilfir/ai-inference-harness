@@ -152,9 +152,26 @@ With **Web access** ticked, the app gives the model three tools and runs them on
 The model may search and read several pages before it answers (up to 8 tool rounds). Each call shows in the chat.
 Fetched pages add thousands of prompt tokens, so web answers take longer than plain ones.
 
+## Skills
+
+The **Skills** checkbox (Chat tab) lets the model use skills the way Goose does: folders containing a `SKILL.md`
+(front matter `name` and `description`) and optional scripts. The app scans `~/.agents/skills`, `~/.claude/skills`
+and `~/.config/goose/skills` (plus any colon-separated folders in `HARNESS_SKILLS_DIRS`) on every message, so
+**adding a skill is dropping its folder into one of those places**; the checkbox's note lists what was found.
+
+With it on, the system prompt lists each skill's name and description and the model gets two tools, run on this Mac:
+
+- `load_skill`: the full `SKILL.md` instructions and the files that ship with the skill.
+- `run_skill_script`: runs a `.py` or `.sh` script inside the skill folder with a list of arguments (no shell, 120 s
+  timeout, 12,000 characters of output). Python goes through `uv run` when `uv` is installed, so a script's declared
+  dependencies are installed on first use; otherwise `python3`. The script path is resolved inside the skill folder.
+
+Skills are code that runs with your user's rights, so only install ones you trust. The first one wired up is
+`youtube-transcript`: paste a YouTube link and ask for a summary or the transcript.
+
 ## Folder access
 
-A chat can be given one folder on this Mac that the model may read. On the Chat tab, **Folder access → Choose
+A chat can be given one folder on this Mac that the model may read. On the Chat tab, the folder bar above the message box: **Choose
 folder…** opens the Mac folder panel (in a browser, the macOS dialog; elsewhere a path can be typed). The
 folder is saved with the chat and shown as 📁 in the history list; **Change…** picks another one and **Remove**
 takes it away. New chats start with no folder.
