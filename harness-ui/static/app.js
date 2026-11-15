@@ -520,6 +520,8 @@ function showTool(div, before, ev) {
     : ev.name === "search_files" ? `Searching files: ${a.query || ""}${a.path ? " in " + a.path : ""}`
     : ev.name === "load_skill" ? `Loading skill: ${a.name || ""}`
     : ev.name === "run_skill_script" ? `Running skill script: ${a.skill || ""}/${a.script || ""} ${(a.args || []).join(" ")}`
+    : ev.name === "write_file" ? `${a.append ? "Appending to" : "Saving"} file: ${a.path || ""}`
+    : ev.name === "make_directory" ? `Creating folder: ${a.path || ""}`
     : ev.name === "read_file" ? `Reading file: ${a.path || ""}${a.start_line > 1 ? " from line " + a.start_line : ""}`
     : `Reading: ${a.url || ""}`;
   let el = [...div.querySelectorAll(".tool")].find((x) => x.dataset.label === label && x.dataset.done !== "1");
@@ -529,7 +531,7 @@ function showTool(div, before, ev) {
     div.insertBefore(el, before);
   }
   if (ev.status === "done") { el.dataset.done = "1"; el.classList.toggle("err", !ev.ok); }
-  const icon = { web_search: "🔎 ", image_search: "🖼️ ", list_files: "📁 ", search_files: "🔍 ", read_file: "📃 ", load_skill: "🧩 ", run_skill_script: "⚙️ " }[ev.name] || "📄 ";
+  const icon = { web_search: "🔎 ", image_search: "🖼️ ", list_files: "📁 ", search_files: "🔍 ", read_file: "📃 ", write_file: "💾 ", make_directory: "📁 ", load_skill: "🧩 ", run_skill_script: "⚙️ " }[ev.name] || "📄 ";
   el.textContent = icon + label + (ev.status === "done" ? ` — ${ev.summary}` : " …");
 }
 

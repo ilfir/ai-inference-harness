@@ -171,19 +171,22 @@ Skills are code that runs with your user's rights, so only install ones you trus
 
 ## Folder access
 
-A chat can be given one folder on this Mac that the model may read. On the Chat tab, the folder bar above the message box: **Choose
+A chat can be given one folder on this Mac that the model may read and save files in. On the Chat tab, the folder bar above the message box: **Choose
 folder…** opens the Mac folder panel (in a browser, the macOS dialog; elsewhere a path can be typed). The
 folder is saved with the chat and shown as 📁 in the history list; **Change…** picks another one and **Remove**
 takes it away. New chats start with no folder.
 
-With a folder set, the model gets three tools that run in the app's server on this Mac:
+With a folder set, the model gets five tools that run in the app's server on this Mac:
 
 - `list_files`: the entries of a directory (optionally recursive), with sizes.
 - `search_files`: lines containing some text across the folder (case-insensitive), optionally limited to a
   subdirectory or a name pattern such as `*.md`. Up to 60 matches.
 - `read_file`: a text file, 12,000 characters at a time; longer files say which line to continue from.
+- `write_file`: saves a text file, creating missing subfolders. It refuses to replace an existing file unless the model
+  passes `overwrite`; `append` adds to the end instead. Nothing is ever deleted, and hidden or build folders are refused.
+- `make_directory`: creates a folder.
 
-Every path the model passes is resolved under the chat's folder, so nothing outside it can be listed or read:
+Every path the model passes is resolved under the chat's folder, so nothing outside it can be listed, read or written:
 `..`, absolute paths and symlinks that lead out are refused. Hidden entries (names starting with `.`) and build
 folders such as `node_modules`, `build` and `__pycache__` are skipped, binary files are not read, and files
 over 4 MB are listed but not read or searched. The system prompt tells the model to treat file contents as data,

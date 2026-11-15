@@ -157,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         panel.canChooseFiles = false
         panel.canCreateDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the folder this chat may read. The model can list, search and read its files."
+        panel.message = "Choose the folder this chat may read. The model can list, search, read and save files in it."
         panel.prompt = "Use folder"
         if let start = args["start"] as? String, !start.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: start)
