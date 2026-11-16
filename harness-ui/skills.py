@@ -15,7 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-MAX_OUT = 12000          # characters of script output returned per call
+MAX_OUT = 40000          # characters of script output returned per call
 MAX_DOC = 20000          # characters of SKILL.md returned
 RUN_TIMEOUT = 120        # seconds per script run
 HOME = Path.home()
@@ -97,8 +97,10 @@ def system_hint():
     return ("You can use skills: packaged instructions and scripts for specific tasks. Available skills:\n%s\n"
             "When the user's request matches a skill, call load_skill with its name first and follow the "
             "instructions it returns. Scripts that ship with a skill are run with run_skill_script (script path "
-            "relative to the skill, arguments as a list). Report script failures as they are; never make up what "
-            "a script should have returned." % lines)
+            "relative to the skill, arguments as a list). Script output is cut at %d characters; for long output "
+            "(a transcript, say) have the script write to a file under /tmp with its own option, then read that file "
+            "with read_file in chunks. Do not retry with other languages or translations just to get around the cut, and do not fetch the same content again in another format: if a read result says truncated, continue it with next_start_line and next_start_char. Report script failures as they are; never make up what "
+            "a script should have returned." % (lines, MAX_OUT))
 
 
 def _skill(name):

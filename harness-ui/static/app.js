@@ -380,7 +380,7 @@ $("cfg-save").onclick = async () => {
 
 // ---------------- chat ----------------
 const PRESETS = {
-  think: { temp: 1.0, topp: 0.95, topk: 20, pres: 0.0, max: 4096 },
+  think: { temp: 1.0, topp: 0.95, topk: 20, pres: 0.0, max: 8192 },
   nothink: { temp: 0.7, topp: 0.8, topk: 20, pres: 1.5, max: 2048 },
 };
 const PARAMS = [["temp", "o-temp", 2], ["topp", "o-topp", 2], ["topk", "o-topk", 0], ["pres", "o-pres", 1], ["max", "o-max", 0]];
@@ -397,6 +397,10 @@ $("p-effort").onchange = () => {
   lastThinking = on;
 };
 for (const [k] of PARAMS) $("p-" + k).oninput = showParams;
+// Tool rounds the model may use per reply; kept across restarts and not touched by the thinking presets.
+$("p-rounds").value = localStorage.getItem("toolRounds") || 16;
+$("o-rounds").textContent = $("p-rounds").value;
+$("p-rounds").oninput = () => { $("o-rounds").textContent = $("p-rounds").value; localStorage.setItem("toolRounds", $("p-rounds").value); };
 applyPreset();
 
 // The open chat. Messages keep what is needed to redraw them; only role/content go to the model.
@@ -649,7 +653,7 @@ async function send() {
   const effort = $("p-effort").value;
   const body = {
     messages, temperature: +$("p-temp").value, top_p: +$("p-topp").value, top_k: +$("p-topk").value,
-    presence_penalty: +$("p-pres").value, max_tokens: +$("p-max").value,
+    presence_penalty: +$("p-pres").value, max_tokens: +$("p-max").value, max_tool_rounds: +$("p-rounds").value,
     chat_template_kwargs: effort === "off" ? { enable_thinking: false } : { enable_thinking: true, reasoning_effort: effort },
     web: $("p-web").checked,
     skills: $("p-skills").checked,

@@ -393,6 +393,14 @@ class Handler(BaseHTTPRequestHandler):
         use_skills = bool(body.pop("skills", False)) and bool(skills.discover())
         if folder:
             folder = filetools.check(folder)   # ValueError -> 400 when the folder is gone
+        scratch = bool(use_skills and not folder)
+        if scratch:
+            folder = str(filetools.TMP_ROOT)   # no folder picked: still let skills hand files to the model through /tmp
+        try:
+            max_rounds = int(body.pop("max_tool_rounds", 0) or 0)
+        except (TypeError, ValueError):
+            max_rounds = 0
+        max_rounds = min(max(max_rounds, 0), self.MAX_TOOL_ROUNDS_CAP) or self.MAX_TOOL_ROUNDS
         body["stream"] = True
         tools, hints = [], []
         if web:
@@ -400,7 +408,7 @@ class Handler(BaseHTTPRequestHandler):
             hints.append(webtools.SYSTEM_HINT.format(date=datetime.date.today().isoformat()))
         if folder:
             tools += filetools.TOOLS
-            hints.append(filetools.SYSTEM_HINT.format(folder=folder))
+            hints.append(filetools.SCRATCH_HINT if scratch else filetools.SYSTEM_HINT.format(folder=folder))
         if use_skills:
             tools += skills.TOOLS
             hints.append(skills.system_hint())
@@ -430,17 +438,20 @@ class Handler(BaseHTTPRequestHandler):
                         if line.strip() == b"" or line.startswith(b"data:"):
                             self.wfile.flush()
                 return
-            self._tool_loop(url, profile, body, upstream, folder)
+            self._tool_loop(url, profile, body, upstream, folder, max_rounds)
         except urllib.error.URLError as e:
             self._sse({"error": "backend request failed: %s" % e})
         except (BrokenPipeError, ConnectionResetError):
             pass  # browser stopped the generation; closing upstream cancels it on the server
 
-    MAX_TOOL_ROUNDS = 8
+    MAX_TOOL_ROUNDS = 16      # default; the client can send max_tool_rounds (clamped to 1..MAX_TOOL_ROUNDS_CAP)
+    MAX_TOOL_ROUNDS_CAP = 64
+    WARN_ROUNDS_LEFT = 2      # tell the model when this many rounds remain
 
-    def _tool_loop(self, url, profile, body, upstream, folder=""):
+    def _tool_loop(self, url, profile, body, upstream, folder="", max_rounds=None):
         """Stream rounds to the browser, running web and file tool calls between them, until the model answers."""
-        for round_no in range(self.MAX_TOOL_ROUNDS + 1):
+        max_rounds = max_rounds or self.MAX_TOOL_ROUNDS
+        for round_no in range(max_rounds + 1):
             calls, content, reasoning, finish = {}, "", "", None
             with upstream:
                 for line in upstream:
@@ -464,7 +475,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._sse(chunk)
             if not calls:
                 break
-            if round_no == self.MAX_TOOL_ROUNDS:
+            if round_no == max_rounds:
                 # Ignored the "no tools" request (or hit the cap some other way): nothing more to run.
                 break
             ordered = [calls[i] for i in sorted(calls)]
@@ -484,7 +495,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._sse({"tool_event": {"name": call["name"], "args": args, "status": "done",
                                           "ok": "error" not in parsed, "summary": summary}})
                 body["messages"].append({"role": "tool", "tool_call_id": tc["id"], "content": result})
-            if round_no + 1 == self.MAX_TOOL_ROUNDS:
+            left = max_rounds - (round_no + 1)
+            if 0 < left == min(self.WARN_ROUNDS_LEFT, max_rounds - 1):
+                # Early warning so the model finishes the job (for example saves the file) before tools are removed.
+                body["messages"].append({"role": "user", "content": "Notice: you have %d tool-call rounds left. "
+                    "Stop reading and searching. If the user asked you to save or write something, call write_file "
+                    "now with the finished content, then give the final answer." % left})
+            if left == 0:
                 # Last round: remove the tools so the model must answer with what it has gathered.
                 body.pop("tools", None)
                 body.pop("tool_choice", None)
