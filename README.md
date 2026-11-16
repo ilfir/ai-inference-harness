@@ -249,7 +249,7 @@ A streaming example that also shows thinking mode is in [`client/examples/openai
 
 ### Thinking vs non-thinking
 
-Qwen3.8 **thinks by default**. The reasoning arrives in `reasoning_content`, separate from `content`. To turn it off, send `"chat_template_kwargs": {"enable_thinking": false}`. To think less, send `"chat_template_kwargs": {"reasoning_effort": "low"}` (or `"medium"`; the default is `"xhigh"`). A server-wide default can be set per profile with `REASONING_EFFORT` (and a hard cap with `REASONING_BUDGET`). On the Strata backend (what the Studio currently runs), set the server-wide default with `POST /settings` instead; see [harness-ui/README.md](harness-ui/README.md#thinking-effort). It is currently `low`, so clients that send no level (n8n, for example) think briefly.
+Qwen3.8 **thinks by default**. The reasoning arrives in `reasoning_content`, separate from `content`. To turn it off, send `"chat_template_kwargs": {"enable_thinking": false}`. To think less, send `"chat_template_kwargs": {"reasoning_effort": "low"}` (or `"medium"`; the default is `"xhigh"`). A server-wide default can be set per profile with `REASONING_EFFORT` (and a hard cap with `REASONING_BUDGET`). On the Strata backend (what the Studio currently runs), set the server-wide default with `POST /settings` instead; see [harness-ui/README.md](harness-ui/README.md#thinking-effort). It is currently `low` with a 4096-token thinking cap (`reasoning_budget_tokens`), so clients that send no level (n8n, for example) think briefly and cannot run away.
 
 Recommended sampling, from the model card:
 

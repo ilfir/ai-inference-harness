@@ -140,11 +140,11 @@ Qwen3.8's chat template reads `reasoning_effort` (`low`, `medium`, `xhigh`; `hig
 
 ### Server-wide default on Strata (n8n and other clients that cannot send it)
 
-Clients such as n8n's OpenAI Chat Model node cannot send `reasoning_effort`. Strata can apply a default to every request that names no level of its own (a request's own level always wins). It is set through `/settings`, takes effect at once, needs no restart, and is saved in `config/strata-iq3xxs.shared-settings.json` on the host, so it survives restarts. The current default on the Studio is `low`:
+Clients such as n8n's OpenAI Chat Model node cannot send `reasoning_effort`. Strata can apply a default to every request that names no level of its own (a request's own level always wins). It is set through `/settings`, takes effect at once, needs no restart, and is saved in `config/strata-iq3xxs.shared-settings.json` on the host, so it survives restarts. The current defaults on the Studio are `low` plus a hard cap of 4096 thinking tokens (about 95 s at most at 43 tok/s). `low` is only an instruction in the prompt and a long, hard prompt can still think for thousands of tokens (one n8n run passed 6,000), so the cap is what bounds latency. When the cap is hit, Strata closes the thinking and the model answers. Set the cap to 0 for no cap:
 
 ```bash
 curl -s http://192.168.1.49:8080/settings -H 'Content-Type: application/json' \
-  -d '{"defaults":{"reasoning_effort":"low"}}'      # none | low | medium | high
+  -d '{"defaults":{"reasoning_effort":"low","reasoning_budget_tokens":4096}}'      # effort: none | low | medium | high
 curl -s http://192.168.1.49:8080/settings            # read it back
 curl -s http://192.168.1.49:8080/settings -H 'Content-Type: application/json' -d '{"defaults":null}'   # clear
 ```
