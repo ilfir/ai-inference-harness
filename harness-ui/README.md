@@ -138,6 +138,19 @@ Qwen3.8's chat template reads `reasoning_effort` (`low`, `medium`, `xhigh`; `hig
 "chat_template_kwargs": {"reasoning_effort": "low"}
 ```
 
+### Server-wide default on Strata (n8n and other clients that cannot send it)
+
+Clients such as n8n's OpenAI Chat Model node cannot send `reasoning_effort`. Strata can apply a default to every request that names no level of its own (a request's own level always wins). It is set through `/settings`, takes effect at once, needs no restart, and is saved in `config/strata-iq3xxs.shared-settings.json` on the host, so it survives restarts. The current default on the Studio is `low`:
+
+```bash
+curl -s http://192.168.1.49:8080/settings -H 'Content-Type: application/json' \
+  -d '{"defaults":{"reasoning_effort":"low"}}'      # none | low | medium | high
+curl -s http://192.168.1.49:8080/settings            # read it back
+curl -s http://192.168.1.49:8080/settings -H 'Content-Type: application/json' -d '{"defaults":null}'   # clear
+```
+
+Notes: `/no_think` in the prompt does nothing on this model. Hand-editing `reasoning_effort` in the run config is lost at the next start, because `make-config.py` rewrites the file. To check it, send a request with no thinking fields: `low` gives a short `reasoning_content`, `none` gives no `reasoning_content` and about 4 completion tokens.
+
 ## Web access
 
 With **Web access** ticked, the app gives the model three tools and runs them on this Mac:
