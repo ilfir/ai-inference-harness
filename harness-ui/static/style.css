@@ -159,11 +159,11 @@ body.resizing iframe, body.resizing .chat-log { pointer-events: none; }
 .md .err { color: var(--bad); margin-top: 8px; white-space: pre-wrap; font-size: 13px; }
 
 .working { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--muted); }
-.working .spark { color: #d97757; font-size: 16px; display: inline-block; animation: spark-pulse 1.6s ease-in-out infinite; }
-.working .shimmer { background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 35%, var(--text) 50%, var(--muted) 65%, var(--muted) 100%);
+.working .spark { color: #e5484d; font-size: 16px; display: inline-block; animation: spark-pulse 1.6s ease-in-out infinite; }
+.working .shimmer { background: linear-gradient(90deg, #d9a400 0%, #d9a400 35%, #ffe066 50%, #d9a400 65%, #d9a400 100%);
   background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: shimmer 2s linear infinite; }
 .working .secs { font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 @keyframes spark-pulse { 0%, 100% { transform: scale(.8) rotate(0deg); opacity: .5; } 50% { transform: scale(1.15) rotate(90deg); opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .working .spark, .working .shimmer { animation: none; } .working .shimmer { color: var(--muted); } }
+@media (prefers-reduced-motion: reduce) { .working .spark, .working .shimmer { animation: none; } .working .shimmer { color: #d9a400; } }
