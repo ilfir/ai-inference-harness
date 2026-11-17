@@ -66,6 +66,7 @@ async function loadConfig() {
   $("cfg-host").value = c.host || "";
   $("cfg-home").value = c.remote_home || "";
   $("cfg-strata").value = c.strata_home || "";
+  $("cfg-searxng").value = c.searxng_url || "";
   httpHost = c.http_host || "127.0.0.1";
 }
 
@@ -369,7 +370,7 @@ $("set-reset").onclick = async () => {
 };
 $("cfg-save").onclick = async () => {
   try {
-    await api("/api/config", { body: { host: $("cfg-host").value, remote_home: $("cfg-home").value, strata_home: $("cfg-strata").value } });
+    await api("/api/config", { body: { host: $("cfg-host").value, remote_home: $("cfg-home").value, strata_home: $("cfg-strata").value, searxng_url: $("cfg-searxng").value } });
     await loadConfig();
     $("cfg-msg").textContent = "Saved. Reconnecting…";
     await refreshStatus();

@@ -14,6 +14,7 @@ import datetime
 import json
 import mimetypes
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -57,6 +58,8 @@ class State:
         self.host = host if host is not None else saved.get("host", "")
         self.remote_home = remote_home or saved.get("remote_home", "~/ai-harness")
         self.strata_home = saved.get("strata_home") or DEFAULT_STRATA_HOME
+        self.searxng_url = saved.get("searxng_url", "")
+        webtools.SEARXNG_URL = self.searxng_url
         self.lock = threading.Lock()
         self.synced = False
         self.bench_lock = threading.Lock()
@@ -64,11 +67,12 @@ class State:
     def save(self):
         SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
         SETTINGS_FILE.write_text(json.dumps({"host": self.host, "remote_home": self.remote_home,
-                                             "strata_home": self.strata_home}, indent=2))
+                                             "strata_home": self.strata_home,
+                                             "searxng_url": self.searxng_url}, indent=2))
 
     def config_view(self):
         return {"host": self.host, "remote_home": self.remote_home, "strata_home": self.strata_home,
-                "http_host": self.http_host()}
+                "searxng_url": self.searxng_url, "http_host": self.http_host()}
 
     def http_host(self):
         return remote.http_host(self.host) if self.host else "127.0.0.1"
@@ -255,6 +259,11 @@ class Handler(BaseHTTPRequestHandler):
                 STATE.host = b.get("host", STATE.host).strip()
                 STATE.remote_home = b.get("remote_home", STATE.remote_home).strip() or "~/ai-harness"
                 STATE.strata_home = b.get("strata_home", STATE.strata_home).strip() or DEFAULT_STRATA_HOME
+                sx = b.get("searxng_url", STATE.searxng_url).strip()
+                if sx and not re.match(r"^https?://[^\s/]+", sx):
+                    return self._json({"error": "SearXNG URL must start with http:// or https://"}, 400)
+                STATE.searxng_url = sx
+                webtools.SEARXNG_URL = sx
                 STATE.synced = False
                 _key_cache.clear()
                 STATE.save()

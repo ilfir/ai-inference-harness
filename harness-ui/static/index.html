@@ -97,9 +97,11 @@
           <label>SSH host <input id="cfg-host" placeholder="user@192.168.1.49"></label>
           <label>Harness home on host <input id="cfg-home" placeholder="~/ai-harness"></label>
           <label>Strata home on host <input id="cfg-strata" placeholder="~/ai-inference-strata"></label>
+          <label>SearXNG search URL (optional) <input id="cfg-searxng" placeholder="http://192.168.1.144:8080/search"></label>
         </div>
         <p class="muted small">Strata home is the ai-inference-strata trial directory on the host (its <code>scripts/strata-start.sh</code>
-          and <code>strata-stop.sh</code> are the only way the app starts or stops Strata). Leave it as is if Strata is not set up.</p>
+          and <code>strata-stop.sh</code> are the only way the app starts or stops Strata). Leave it as is if Strata is not set up.
+          The SearXNG URL replaces DuckDuckGo for web search (it must have the JSON format enabled); if it fails the app falls back to DuckDuckGo.</p>
         <div class="row"><button id="cfg-save">Save connection</button><span class="muted small" id="cfg-msg"></span></div>
       </div>
     </section>

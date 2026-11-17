@@ -63,8 +63,37 @@ def _text(fragment):
     return html.unescape(re.sub(r"<[^>]+>", "", fragment)).strip()
 
 
+SEARXNG_URL = ""   # optional custom SearXNG endpoint (e.g. http://host:8080/search); set from the app's settings
+
+
+def searxng_search(base, query, max_results):
+    """Query a SearXNG instance with format=json. Raises on any failure so the caller can fall back."""
+    sep = "&" if "?" in base else "?"
+    url = base + sep + urllib.parse.urlencode({"q": query, "format": "json"})
+    _, ctype, raw = _get(url, timeout=8, headers={"Accept": "application/json"})
+    data = json.loads(raw)   # a non-JSON reply (format=json disabled) raises ValueError
+    results = [{"title": r.get("title", ""), "url": r["url"], "snippet": (r.get("content") or "").strip()}
+               for r in data.get("results", []) if r.get("url")][:max_results]
+    if not results:
+        raise ValueError("no results")
+    return {"query": query, "results": results, "source": "searxng"}
+
+
 def web_search(query, max_results=6):
     max_results = max(1, min(int(max_results or 6), 10))
+    fallback_note = ""
+    if SEARXNG_URL:
+        try:
+            return searxng_search(SEARXNG_URL, query, max_results)
+        except Exception as e:  # unreachable, timeout, HTTP error, bad JSON or empty: use the default search
+            fallback_note = "custom SearXNG failed (%s: %s); used DuckDuckGo" % (type(e).__name__, e)
+    out = _ddg_search(query, max_results)
+    if fallback_note:
+        out["note"] = (out.get("note", "") + " " + fallback_note).strip()
+    return out
+
+
+def _ddg_search(query, max_results):
     _, _, page = _get("https://html.duckduckgo.com/html/", data=urllib.parse.urlencode({"q": query}).encode())
     results = []
     for m in re.finditer(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>(.*?)(?=<a[^>]+class="result__a"|$)',
